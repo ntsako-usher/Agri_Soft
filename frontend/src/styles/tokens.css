@@ -1,0 +1,61 @@
+/* Design tokens. Change colours, radii and fonts here and the whole app follows. */
+:root {
+  --font: 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  /* Palette */
+  --bg: #f4f5f1;
+  --ink: #172019;
+  --muted: #667066;
+  --line: rgba(67, 82, 69, 0.12);
+  --green: #557a5b;
+  --deep-green: #344c38;
+  --soft-green: #e4ece3;
+  --amber: #a97c37;
+  --critical: #b85c52;
+  --blue: #5a7db4;
+  --healthy: #5d9c74;
+
+  /* Surfaces */
+  --card-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.52));
+  --card-border: rgba(255, 255, 255, 0.9);
+  --card-shadow: 0 16px 44px rgba(35, 50, 37, 0.055), 0 2px 6px rgba(35, 50, 37, 0.025), inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  --control-bg: rgba(255, 255, 255, 0.55);
+  --control-border: rgba(73, 88, 74, 0.14);
+  --hover: rgba(85, 122, 91, 0.08);
+  --sidebar-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.66), rgba(250, 251, 248, 0.36));
+  --page-glow-1: rgba(210, 224, 210, 0.62);
+  --page-glow-2: rgba(236, 230, 216, 0.38);
+  --hero-bg: linear-gradient(115deg, rgba(236, 243, 234, 0.95), rgba(251, 252, 249, 0.6));
+
+  /* Shape and rhythm */
+  --radius-lg: 22px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --gap: 16px;
+  --sidebar-width: 244px;
+}
+
+:root[data-theme='dark'] {
+  --bg: #111511;
+  --ink: #eff2ed;
+  --muted: #a0aaa1;
+  --line: rgba(225, 235, 224, 0.11);
+  --green: #88ae8b;
+  --deep-green: #bed5be;
+  --soft-green: rgba(108, 145, 111, 0.2);
+  --amber: #d2ab62;
+  --critical: #d98a80;
+  --blue: #86a6dc;
+  --healthy: #7fbf98;
+
+  --card-bg: linear-gradient(135deg, rgba(33, 41, 34, 0.86), rgba(22, 29, 23, 0.7));
+  --card-border: rgba(239, 245, 237, 0.08);
+  --card-shadow: 0 16px 44px rgba(0, 0, 0, 0.2), inset 0 1px rgba(255, 255, 255, 0.045);
+  --control-bg: rgba(255, 255, 255, 0.05);
+  --control-border: rgba(239, 245, 237, 0.11);
+  --hover: rgba(255, 255, 255, 0.06);
+  --sidebar-bg: linear-gradient(180deg, rgba(25, 31, 25, 0.8), rgba(18, 23, 18, 0.6));
+  --page-glow-1: rgba(63, 91, 65, 0.34);
+  --page-glow-2: rgba(61, 70, 53, 0.28);
+  --hero-bg: linear-gradient(115deg, rgba(38, 59, 40, 0.8), rgba(23, 31, 24, 0.75));
+}
