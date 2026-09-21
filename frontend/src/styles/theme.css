@@ -1,0 +1,87 @@
+:root {
+  /* Light theme — matches the screenshot */
+  --bg:            #f6f8f4;
+  --surface:       #ffffff;
+  --surface-alt:   #f0f3ec;
+  --border:        #e6e9e0;
+  --text:          #1a1d1a;
+  --text-muted:    #6b7168;
+  --text-soft:     #8b9187;
+  --accent:        #4a7c59;
+  --accent-soft:   #e3ede4;
+  --accent-hover:  #3f6a4b;
+  --warn:          #d99a3b;
+  --warn-soft:     #fdf3e3;
+  --danger:        #c25b5b;
+  --danger-soft:   #fbeaea;
+  --good:          #4a7c59;
+  --good-soft:     #e3ede4;
+  --radius:        18px;
+  --radius-sm:     12px;
+  --radius-pill:   999px;
+  --shadow:        0 1px 2px rgba(20,30,20,0.04), 0 8px 24px rgba(20,30,20,0.05);
+  --shadow-sm:     0 1px 2px rgba(20,30,20,0.05);
+}
+
+[data-theme="dark"] {
+  --bg:            #0e1210;
+  --surface:       #171b18;
+  --surface-alt:   #1e231f;
+  --border:        #262b27;
+  --text:          #e8ebe6;
+  --text-muted:    #8c938b;
+  --text-soft:     #6d746c;
+  --accent:        #7fb389;
+  --accent-soft:   #1f2b22;
+  --accent-hover:  #90c19a;
+  --warn:          #e0aa56;
+  --warn-soft:     #2a2317;
+  --danger:        #d97a7a;
+  --danger-soft:   #2b1c1c;
+  --good:          #7fb389;
+  --good-soft:     #1f2b22;
+  --shadow:        0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.25);
+  --shadow-sm:     0 1px 2px rgba(0,0,0,0.3);
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 20px;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input, select {
+  font-family: inherit;
+}
+
+/* Subtle scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-track { background: transparent; }
