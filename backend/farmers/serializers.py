@@ -42,3 +42,43 @@ class FarmerSerializer(serializers.ModelSerializer):
         model = Farmer
         fields = ("id", "name", "email", "phone", "status", "created_at")
         read_only_fields = ("id", "created_at")
+
+
+class RegisterSerializer(serializers.ModelSerializer):
+    """
+    Signup serializer. Creates a Farmer with status=PENDING.
+    Accepts optional 'address' from the frontend and stores it in 'phone'
+    only if phone wasn't sent — otherwise ignores it (no address column on model).
+    """
+
+    password = serializers.CharField(write_only=True, min_length=6)
+    confirm_password = serializers.CharField(write_only=True, required=False)
+    address = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
+    class Meta:
+        model = Farmer
+        fields = ("id", "name", "email", "phone", "password", "confirm_password", "address")
+        read_only_fields = ("id",)
+
+    def validate_email(self, value):
+        value = value.lower().strip()
+        if Farmer.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("A farmer with this email already exists.")
+        return value
+
+    def validate(self, attrs):
+        pw = attrs.get("password")
+        confirm = attrs.pop("confirm_password", None)
+        if confirm is not None and pw != confirm:
+            raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
+        # 'address' is accepted but not stored (no model field) — drop it
+        attrs.pop("address", None)
+        return attrs
+
+    def create(self, validated_data):
+        password = validated_data.pop("password")
+        farmer = Farmer(**validated_data)
+        farmer.set_password(password)
+        farmer.status = Farmer.Status.PENDING
+        farmer.save()
+        return farmer

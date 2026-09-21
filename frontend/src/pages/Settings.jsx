@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Farm, MapPin, Trash2, ChevronRight } from "lucide-react";
+import { Plus, Sprout, MapPin, Trash2, ChevronRight } from "lucide-react";
 import { api, currentUser } from "../api/client";
 import Topbar from "../components/Topbar";
 
@@ -102,7 +102,7 @@ export default function Settings() {
               color: "var(--accent)",
               flexShrink: 0,
             }}>
-              <Farm size={16} />
+              <Sprout size={16} />
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 500 }}>{f.farm_name}</div>

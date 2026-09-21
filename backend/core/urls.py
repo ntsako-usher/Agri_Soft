@@ -17,6 +17,9 @@ urlpatterns = [
     path("api/auth/token/", EmailTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
 
+    # Farmer auth (signup)
+    path("api/farmers/", include("farmers.urls")),
+
     # App endpoints
     path("api/", include("agri.urls")),
 ]

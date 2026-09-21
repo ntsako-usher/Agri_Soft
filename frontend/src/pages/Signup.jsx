@@ -8,7 +8,7 @@ export default function Signup() {
   const [form, setForm] = useState({
     name: "",
     email: "",
-    phone_number: "",
+    phone: "",
     address: "",
     password: "",
     confirm: "",
@@ -34,9 +34,10 @@ export default function Signup() {
       await api.register({
         name: form.name,
         email: form.email,
-        phone_number: form.phone_number,
+        phone: form.phone,
         address: form.address,
         password: form.password,
+        confirm_password: form.confirm,
       });
       // Do NOT auto-login — account needs admin approval
       nav("/signup-success", { replace: true });
@@ -78,7 +79,7 @@ export default function Signup() {
           ))}
         </svg>
 
-        <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ position: "relative", zIndex: 1, display:"flex", alignItems: "center", gap: 10 }}>
           <div style={{
             width: 36, height: 36, borderRadius: 12,
             background: "rgba(255,255,255,0.18)",
@@ -147,14 +148,14 @@ export default function Signup() {
             }}>
               Create your account
             </h2>
-            <div style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 6 }}>
+            <div style={{ color: "var(--text-muted)", fontSize:14, marginTop: 6 }}>
               Takes less than a minute.
             </div>
           </div>
 
           <Field label="Full name" value={form.name} onChange={change("name")} required />
           <Field label="Email" type="email" value={form.email} onChange={change("email")} required />
-          <Field label="Phone number" value={form.phone_number} onChange={change("phone_number")} required />
+          <Field label="Phone number" value={form.phone} onChange={change("phone")} required />
           <Field label="Address" value={form.address} onChange={change("address")} />
           <Field label="Password" type="password" value={form.password} onChange={change("password")} required />
           <Field label="Confirm password" type="password" value={form.confirm} onChange={change("confirm")} required />

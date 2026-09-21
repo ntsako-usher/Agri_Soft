@@ -55,7 +55,7 @@ export function currentUser() {
 export const api = {
   // Auth
   login:    (email, password) =>
-              axios.post(`${BASE_URL}/auth/token/`, { email, password }),
+              axios.post(`${BASE_URL}/auth/token/`, { username: email, password }),
   register: (payload) =>
               axios.post(`${BASE_URL}/farmers/register/`, payload),
 
