@@ -1,14 +1,52 @@
 from django.contrib import admin
+from django.utils.html import format_html
+
 from .models import Farm, Device, SensorReading, Threshold, Alert, DeviceCommand
 
 
 @admin.register(Farm)
 class FarmAdmin(admin.ModelAdmin):
-    list_display = ("id", "farm_name", "farmer", "location_desc", "size_hectares", "timezone", "created_at")
-    list_filter = ("timezone",)
+    list_display = (
+        "id", "farm_name", "farmer", "status_badge",
+        "location_desc", "size_hectares", "timezone", "created_at",
+    )
+    list_filter = ("status", "timezone")
     search_fields = ("farm_name", "location_desc", "farmer__email", "farmer__name")
     ordering = ("-created_at",)
     readonly_fields = ("created_at", "updated_at")
+
+    actions = ("approve_farms", "reject_farms", "reset_to_pending")
+    actions_on_top = True
+    actions_on_bottom = True
+
+    @admin.display(description="Status", ordering="status")
+    def status_badge(self, obj):
+        colors = {
+            Farm.Status.APPROVED: ("#0f5132", "#d1e7dd"),
+            Farm.Status.PENDING:  ("#664d03", "#fff3cd"),
+            Farm.Status.REJECTED: ("#842029", "#f8d7da"),
+        }
+        fg, bg = colors.get(obj.status, ("#333", "#eee"))
+        return format_html(
+            '<span style="padding:3px 10px;border-radius:999px;'
+            'font-size:12px;font-weight:600;color:{};background:{};">{}</span>',
+            fg, bg, obj.get_status_display(),
+        )
+
+    @admin.action(description="✅ Approve selected farms")
+    def approve_farms(self, request, queryset):
+        updated = queryset.update(status=Farm.Status.APPROVED)
+        self.message_user(request, f"{updated} farm(s) approved.")
+
+    @admin.action(description="❌ Reject selected farms")
+    def reject_farms(self, request, queryset):
+        updated = queryset.update(status=Farm.Status.REJECTED)
+        self.message_user(request, f"{updated} farm(s) rejected.")
+
+    @admin.action(description="⏳ Reset selected farms to pending")
+    def reset_to_pending(self, request, queryset):
+        updated = queryset.update(status=Farm.Status.PENDING)
+        self.message_user(request, f"{updated} farm(s) set to pending.")
 
 
 @admin.register(Device)

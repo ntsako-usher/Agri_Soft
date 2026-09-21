@@ -6,7 +6,12 @@ from django.db import models
 # 1. Farm
 # =========================================================================
 class Farm(models.Model):
-    """A farm owned by a Farmer.""" 
+    """A farm owned by a Farmer."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
 
     farmer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -20,6 +25,11 @@ class Farm(models.Model):
     longitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
     size_hectares = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
     timezone = models.CharField(max_length=64, default="Africa/Johannesburg")
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -28,6 +38,7 @@ class Farm(models.Model):
         db_table = "farms"
         indexes = [
             models.Index(fields=["farmer"]),
+            models.Index(fields=["status"]),
         ]
         verbose_name = "Farm"
         verbose_name_plural = "Farms"
