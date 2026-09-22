@@ -6,7 +6,8 @@ import {
   Droplet, Thermometer, Activity,
 } from "lucide-react";
 import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
+  Tooltip, CartesianGrid,
 } from "recharts";
 
 const RANGES = [
@@ -27,8 +28,8 @@ export default function History() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
-  // 1. Load farms + devices on mount
   useEffect(() => {
     Promise.all([
       api.farms().catch(() => ({ data: [] })),
@@ -37,23 +38,21 @@ export default function History() {
       setFarms(fRes.data || []);
       setDevices(dRes.data || []);
     });
-  }, []);
+  }, [reloadKey]);
 
-  // 2. Load readings whenever device or range changes
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError("");
 
-    // If a specific device is picked, use it. Otherwise, fetch readings for every
-    // device in the selected farm (or all devices if no farm is selected).
     const deviceIds = (() => {
       if (deviceFilter !== "all") return [Number(deviceFilter)];
-      const farmDevices = devices.filter((d) => {
-        const fId = d.farm ?? d.farm_id;
-        return farmFilter === "all" || String(fId) === String(farmFilter);
-      });
-      return farmDevices.map((d) => d.id);
+      return devices
+        .filter((d) => {
+          const fId = d.farm ?? d.farm_id;
+          return farmFilter === "all" || String(fId) === String(farmFilter);
+        })
+        .map((d) => d.id);
     })();
 
     if (deviceIds.length === 0) {
@@ -72,72 +71,61 @@ export default function History() {
       .then((chunks) => {
         if (cancelled) return;
         const all = chunks.flat().sort((a, b) => {
-          const ta = new Date(a.recorded_at || a.created_at || a.timestamp).getTime();
-          const tb = new Date(b.recorded_at || b.created_at || b.timestamp).getTime();
-          return tb - ta; // newest first
+          const ta = new Date(a.recorded_at).getTime();
+          const tb = new Date(b.recorded_at).getTime();
+          return tb - ta;
         });
         setReadings(all);
       })
-      .catch(() => {
-        if (!cancelled) setError("Could not load readings.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .catch(() => { if (!cancelled) setError("Could not load readings."); })
+      .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
   }, [deviceFilter, farmFilter, range, devices]);
 
-  // 3. Devices visible under the current farm filter (for the device dropdown)
   const visibleDevices = useMemo(() => {
     if (farmFilter === "all") return devices;
-    return devices.filter((d) => {
-      const fId = d.farm ?? d.farm_id;
-      return String(fId) === String(farmFilter);
-    });
+    return devices.filter((d) => String(d.farm) === String(farmFilter));
   }, [devices, farmFilter]);
 
-  // Reset device filter if it's no longer under the selected farm
   useEffect(() => {
     if (deviceFilter === "all") return;
     const stillValid = visibleDevices.some((d) => String(d.id) === String(deviceFilter));
     if (!stillValid) setDeviceFilter("all");
   }, [visibleDevices, deviceFilter]);
 
-  // 4. Normalise readings into a stable shape
+  // Real backend readings shape:
+  // { id, device, device_name, device_uid, moisture, temp_c, humidity,
+  //   pressure_hpa, light_level, rain_detected, soil_ph, smoke_level,
+  //   flame_detected, motion_detected, recorded_at }
   const normalised = useMemo(() => {
     return readings.map((r) => ({
       raw: r,
       id: r.id,
-      time: r.recorded_at || r.created_at || r.timestamp,
-      deviceId: r._deviceId ?? r.device ?? r.device_id,
-      soilMoisture: r.soil_moisture ?? r.moisture ?? null,
-      temperature: r.temperature ?? r.temp ?? null,
-      humidity: r.humidity ?? r.relative_humidity ?? null,
+      time: r.recorded_at,
+      deviceId: r._deviceId ?? r.device,
+      deviceName: r.device_name,
+      moisture: r.moisture != null ? Number(r.moisture) : null,
+      temperature: r.temp_c != null ? Number(r.temp_c) : null,
+      humidity: r.humidity != null ? Number(r.humidity) : null,
     }));
   }, [readings]);
 
-  // 5. Client-side search filter (device name or timestamp)
   const filtered = useMemo(() => {
     if (!query.trim()) return normalised;
     const q = query.toLowerCase();
-    return normalised.filter((r) => {
-      const dev = devices.find((d) => d.id === r.deviceId);
-      const name = (dev?.name || dev?.device_name || "").toLowerCase();
-      const ts = new Date(r.time).toLocaleString().toLowerCase();
-      return name.includes(q) || ts.includes(q);
-    });
-  }, [normalised, query, devices]);
+    return normalised.filter((r) =>
+      (r.deviceName || "").toLowerCase().includes(q) ||
+      new Date(r.time).toLocaleString().toLowerCase().includes(q)
+    );
+  }, [normalised, query]);
 
-  // 6. Aggregate stats
   const stats = useMemo(() => {
     const vals = filtered;
-    const moistures = vals.map((r) => r.soilMoisture).filter((v) => v != null);
+    const moistures = vals.map((r) => r.moisture).filter((v) => v != null);
     const temps = vals.map((r) => r.temperature).filter((v) => v != null);
-
     const avg = (arr) =>
       arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : null;
-
     return {
       total: vals.length,
       avgMoisture: avg(moistures),
@@ -149,54 +137,30 @@ export default function History() {
     };
   }, [filtered]);
 
-  // 7. Chart data — oldest → newest for the x-axis
   const chartData = useMemo(() => {
     return [...filtered]
       .reverse()
       .map((r) => ({
-        time:
-          range === "24h"
-            ? new Date(r.time).toLocaleTimeString([], {
-                hour: "numeric",
-                hour12: true,
-              })
-            : new Date(r.time).toLocaleDateString([], {
-                month: "short",
-                day: "numeric",
-              }),
-        moisture: r.soilMoisture,
+        time: range === "24h"
+          ? new Date(r.time).toLocaleTimeString([], { hour: "numeric", hour12: true })
+          : new Date(r.time).toLocaleDateString([], { month: "short", day: "numeric" }),
+        moisture: r.moisture,
         temperature: r.temperature,
       }));
   }, [filtered, range]);
 
-  const refresh = () => {
-    // re-trigger the readings effect by toggling a dummy dependency
-    setRange((r) => r);
-    setDeviceFilter((d) => d);
-    // simplest: hit the same fetch logic by mutating devices state
-    Promise.all([
-      api.farms().catch(() => ({ data: [] })),
-      api.devices().catch(() => ({ data: [] })),
-    ]).then(([fRes, dRes]) => {
-      setFarms(fRes.data || []);
-      setDevices(dRes.data || []);
-    });
-  };
+  const refresh = () => setReloadKey((k) => k + 1);
 
   const exportCSV = () => {
     if (!filtered.length) return;
-    const header = ["time", "device", "soil_moisture", "temperature", "humidity"];
-    const rows = filtered.map((r) => {
-      const dev = devices.find((d) => d.id === r.deviceId);
-      const name = dev?.name || dev?.device_name || `Device ${r.deviceId}`;
-      return [
-        new Date(r.time).toISOString(),
-        name,
-        r.soilMoisture ?? "",
-        r.temperature ?? "",
-        r.humidity ?? "",
-      ];
-    });
+    const header = ["time", "device", "moisture_%", "temperature_C", "humidity_%"];
+    const rows = filtered.map((r) => [
+      new Date(r.time).toISOString(),
+      r.deviceName || `Device ${r.deviceId}`,
+      r.moisture ?? "",
+      r.temperature ?? "",
+      r.humidity ?? "",
+    ]);
     const csv = [header, ...rows].map((row) => row.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -211,22 +175,15 @@ export default function History() {
     <div style={{ padding: "28px 32px", maxWidth: 1440 }}>
       <Topbar />
 
-      {/* Title */}
       <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-end",
-        marginBottom: 24,
-        flexWrap: "wrap",
-        gap: 12,
+        display: "flex", justifyContent: "space-between",
+        alignItems: "flex-end", marginBottom: 24,
+        flexWrap: "wrap", gap: 12,
       }}>
         <div>
           <h1 style={{
-            margin: 0,
-            fontSize: 30,
-            fontWeight: 500,
-            letterSpacing: "-0.5px",
-            color: "var(--text)",
+            margin: 0, fontSize: 30, fontWeight: 500,
+            letterSpacing: "-0.5px", color: "var(--text)",
           }}>
             History
           </h1>
@@ -236,119 +193,80 @@ export default function History() {
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button
-            onClick={refresh}
-            disabled={loading}
-            style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: "10px 16px",
-              borderRadius: "var(--radius-pill)",
-              border: "1px solid var(--border)",
-              background: "var(--surface)",
-              color: "var(--text)",
-              fontSize: 13, fontWeight: 500,
-              cursor: loading ? "wait" : "pointer",
-              opacity: loading ? 0.6 : 1,
-            }}
-          >
-            <RefreshCw
-              size={14}
-              style={{ animation: loading ? "spin 1s linear infinite" : "none" }}
-            />
+          <button onClick={refresh} disabled={loading} style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "10px 16px",
+            borderRadius: "var(--radius-pill)",
+            border: "1px solid var(--border)",
+            background: "var(--surface)",
+            color: "var(--text)", fontSize: 13, fontWeight: 500,
+            cursor: loading ? "wait" : "pointer",
+            opacity: loading ? 0.6 : 1,
+          }}>
+            <RefreshCw size={14}
+              style={{ animation: loading ? "spin 1s linear infinite" : "none" }} />
             Refresh
           </button>
-          <button
-            onClick={exportCSV}
-            disabled={!filtered.length}
-            style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: "10px 16px",
-              borderRadius: "var(--radius-pill)",
-              border: "none",
-              background: "var(--accent)",
-              color: "white",
-              fontSize: 13, fontWeight: 600,
-              cursor: filtered.length ? "pointer" : "not-allowed",
-              opacity: filtered.length ? 1 : 0.5,
-            }}
-          >
+          <button onClick={exportCSV} disabled={!filtered.length} style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "10px 16px",
+            borderRadius: "var(--radius-pill)",
+            border: "none", background: "var(--accent)",
+            color: "white", fontSize: 13, fontWeight: 600,
+            cursor: filtered.length ? "pointer" : "not-allowed",
+            opacity: filtered.length ? 1 : 0.5,
+          }}>
             <Download size={14} /> Export CSV
           </button>
         </div>
       </div>
 
-      {/* Stats cards */}
+      {/* Stats */}
       <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
-        gap: 16,
-        marginBottom: 20,
+        display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
+        gap: 16, marginBottom: 20,
       }}>
-        <StatCard
-          icon={<Activity size={16} />}
-          label="Readings"
-          value={stats.total}
-          tone="neutral"
-        />
+        <StatCard icon={<Activity size={16} />} label="Readings" value={stats.total} />
         <StatCard
           icon={<Droplet size={16} />}
           label="Avg. soil moisture"
           value={stats.avgMoisture != null ? `${stats.avgMoisture}%` : "—"}
-          hint={
-            stats.minMoisture != null
-              ? `${stats.minMoisture}% – ${stats.maxMoisture}%`
-              : null
-          }
+          hint={stats.minMoisture != null ? `${stats.minMoisture}% – ${stats.maxMoisture}%` : null}
           tone="good"
         />
         <StatCard
           icon={<Thermometer size={16} />}
           label="Avg. temperature"
           value={stats.avgTemp != null ? `${stats.avgTemp}°C` : "—"}
-          hint={
-            stats.minTemp != null ? `${stats.minTemp}°C – ${stats.maxTemp}°C` : null
-          }
+          hint={stats.minTemp != null ? `${stats.minTemp}°C – ${stats.maxTemp}°C` : null}
           tone="warn"
         />
         <StatCard
           icon={<HistoryIcon size={16} />}
           label="Range"
           value={RANGES.find((r) => r.key === range)?.label.replace("Last ", "") || ""}
-          tone="neutral"
         />
       </div>
 
       {/* Filters */}
       <div style={{
-        display: "flex",
-        gap: 12,
-        marginBottom: 20,
-        flexWrap: "wrap",
-        alignItems: "center",
+        display: "flex", gap: 12, marginBottom: 20,
+        flexWrap: "wrap", alignItems: "center",
       }}>
         <div style={{ position: "relative", flex: "1 1 220px", maxWidth: 300 }}>
-          <Search
-            size={14}
-            style={{
-              position: "absolute",
-              left: 14, top: "50%",
-              transform: "translateY(-50%)",
-              color: "var(--text-muted)",
-            }}
-          />
+          <Search size={14} style={{
+            position: "absolute", left: 14, top: "50%",
+            transform: "translateY(-50%)", color: "var(--text-muted)",
+          }} />
           <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            value={query} onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by device or date"
             style={{
-              width: "100%",
-              padding: "10px 14px 10px 38px",
+              width: "100%", padding: "10px 14px 10px 38px",
               borderRadius: "var(--radius-pill)",
               border: "1px solid var(--border)",
-              background: "var(--surface)",
-              color: "var(--text)",
-              fontSize: 13, outline: "none",
-              boxSizing: "border-box",
+              background: "var(--surface)", color: "var(--text)",
+              fontSize: 13, outline: "none", boxSizing: "border-box",
             }}
           />
         </div>
@@ -371,50 +289,34 @@ export default function History() {
         >
           <option value="all">All devices</option>
           {visibleDevices.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name || d.device_name || `Device ${d.device_uid || d.id}`}
-            </option>
+            <option key={d.id} value={d.id}>{d.name}</option>
           ))}
         </select>
 
-        {/* Range pills */}
         <div style={{
-          display: "flex",
-          background: "var(--surface-alt)",
-          borderRadius: "var(--radius-pill)",
-          padding: 4,
+          display: "flex", background: "var(--surface-alt)",
+          borderRadius: "var(--radius-pill)", padding: 4,
         }}>
           {RANGES.map((r) => (
-            <button
-              key={r.key}
-              onClick={() => setRange(r.key)}
-              style={{
-                padding: "6px 14px",
-                borderRadius: "var(--radius-pill)",
-                border: "none",
-                background: range === r.key ? "var(--surface)" : "transparent",
-                color: range === r.key ? "var(--text)" : "var(--text-muted)",
-                fontSize: 12,
-                fontWeight: range === r.key ? 600 : 500,
-                cursor: "pointer",
-                boxShadow: range === r.key ? "var(--shadow-sm)" : "none",
-              }}
-            >
+            <button key={r.key} onClick={() => setRange(r.key)} style={{
+              padding: "6px 14px", borderRadius: "var(--radius-pill)",
+              border: "none",
+              background: range === r.key ? "var(--surface)" : "transparent",
+              color: range === r.key ? "var(--text)" : "var(--text-muted)",
+              fontSize: 12, fontWeight: range === r.key ? 600 : 500,
+              cursor: "pointer",
+            }}>
               {r.key}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Error */}
       {error && (
         <div style={{
           padding: "12px 16px",
-          background: "var(--danger-soft)",
-          color: "var(--danger)",
-          borderRadius: "var(--radius-sm)",
-          fontSize: 13,
-          marginBottom: 16,
+          background: "var(--danger-soft)", color: "var(--danger)",
+          borderRadius: "var(--radius-sm)", fontSize: 13, marginBottom: 16,
         }}>
           {error}
         </div>
@@ -423,50 +325,25 @@ export default function History() {
       {/* Chart */}
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 18,
+          display: "flex", justifyContent: "space-between",
+          alignItems: "center", marginBottom: 18,
         }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 500 }}>
             <Droplet size={15} /> Soil moisture over time
-          </div>
-          <div style={{
-            fontSize: 12,
-            color: "var(--text-muted)",
-            display: "flex",
-            gap: 16,
-          }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{
-                width: 10, height: 10, borderRadius: 3,
-                background: "var(--accent)",
-              }} />
-              Moisture
-            </span>
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{
-                width: 10, height: 10, borderRadius: 3,
-                background: "var(--warn)",
-              }} />
-              Temperature
-            </span>
           </div>
         </div>
 
         <div style={{ height: 280 }}>
           {loading && chartData.length === 0 ? (
             <div style={{
-              height: "100%",
-              display: "grid", placeItems: "center",
+              height: "100%", display: "grid", placeItems: "center",
               color: "var(--text-muted)", fontSize: 13,
             }}>
               Loading readings…
             </div>
           ) : chartData.length === 0 ? (
             <div style={{
-              height: "100%",
-              display: "grid", placeItems: "center",
+              height: "100%", display: "grid", placeItems: "center",
               color: "var(--text-muted)", fontSize: 13,
             }}>
               No readings in this range.
@@ -479,55 +356,20 @@ export default function History() {
                     <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.25} />
                     <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
                   </linearGradient>
-                  <linearGradient id="histTempGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--warn)" stopOpacity={0.18} />
-                    <stop offset="100%" stopColor="var(--warn)" stopOpacity={0} />
-                  </linearGradient>
                 </defs>
-                <CartesianGrid
-                  stroke="var(--border)"
-                  strokeDasharray="3 3"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="time"
-                  stroke="var(--text-muted)"
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  stroke="var(--text-muted)"
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 10,
-                    fontSize: 12,
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="moisture"
-                  stroke="var(--accent)"
-                  strokeWidth={2}
-                  fill="url(#histMoistGrad)"
-                  dot={false}
-                  name="Moisture (%)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="temperature"
-                  stroke="var(--warn)"
-                  strokeWidth={2}
-                  fill="url(#histTempGrad)"
-                  dot={false}
-                  name="Temperature (°C)"
-                />
+                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="time" stroke="var(--text-muted)"
+                  fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="var(--text-muted)"
+                  fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 10, fontSize: 12,
+                }} />
+                <Area type="monotone" dataKey="moisture"
+                  stroke="var(--accent)" strokeWidth={2}
+                  fill="url(#histMoistGrad)" dot={false} name="Moisture (%)" />
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -537,14 +379,10 @@ export default function History() {
       {/* Table */}
       <div className="card">
         <div style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 16,
+          display: "flex", justifyContent: "space-between",
+          alignItems: "center", marginBottom: 16,
         }}>
-          <div style={{ fontWeight: 500, fontSize: 14 }}>
-            Recent readings
-          </div>
+          <div style={{ fontWeight: 500, fontSize: 14 }}>Recent readings</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
             {filtered.length} {filtered.length === 1 ? "entry" : "entries"}
           </div>
@@ -552,73 +390,50 @@ export default function History() {
 
         {filtered.length === 0 ? (
           <div style={{
-            padding: 40,
-            textAlign: "center",
-            color: "var(--text-muted)",
-            fontSize: 13,
+            padding: 40, textAlign: "center",
+            color: "var(--text-muted)", fontSize: 13,
           }}>
             No readings match your filters.
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
-            <table style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: 13,
-            }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr style={{
-                  borderBottom: "1px solid var(--border)",
-                  textAlign: "left",
-                }}>
+                <tr style={{ borderBottom: "1px solid var(--border)", textAlign: "left" }}>
                   <Th>Time</Th>
                   <Th>Device</Th>
-                  <Th align="right">Soil moisture</Th>
+                  <Th align="right">Moisture</Th>
                   <Th align="right">Temperature</Th>
                   <Th align="right">Humidity</Th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.slice(0, 50).map((r, i) => {
-                  const dev = devices.find((d) => d.id === r.deviceId);
-                  const devName = dev?.name || dev?.device_name || `Device ${r.deviceId}`;
-                  return (
-                    <tr
-                      key={r.id ?? i}
-                      style={{
-                        borderBottom: "1px solid var(--border)",
-                      }}
-                    >
-                      <Td muted>
-                        {new Date(r.time).toLocaleString([], {
-                          month: "short",
-                          day: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                          hour12: true,
-                        })}
-                      </Td>
-                      <Td>{devName}</Td>
-                      <Td align="right" strong>
-                        {r.soilMoisture != null ? `${r.soilMoisture}%` : "—"}
-                      </Td>
-                      <Td align="right">
-                        {r.temperature != null ? `${r.temperature}°C` : "—"}
-                      </Td>
-                      <Td align="right">
-                        {r.humidity != null ? `${r.humidity}%` : "—"}
-                      </Td>
-                    </tr>
-                  );
-                })}
+                {filtered.slice(0, 50).map((r, i) => (
+                  <tr key={r.id ?? i} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <Td muted>
+                      {new Date(r.time).toLocaleString([], {
+                        month: "short", day: "numeric",
+                        hour: "numeric", minute: "2-digit", hour12: true,
+                      })}
+                    </Td>
+                    <Td>{r.deviceName || `Device ${r.deviceId}`}</Td>
+                    <Td align="right" strong>
+                      {r.moisture != null ? `${r.moisture.toFixed(1)}%` : "—"}
+                    </Td>
+                    <Td align="right">
+                      {r.temperature != null ? `${r.temperature.toFixed(1)}°C` : "—"}
+                    </Td>
+                    <Td align="right">
+                      {r.humidity != null ? `${r.humidity.toFixed(0)}%` : "—"}
+                    </Td>
+                  </tr>
+                ))}
               </tbody>
             </table>
             {filtered.length > 50 && (
               <div style={{
-                padding: "12px 0",
-                fontSize: 12,
-                color: "var(--text-muted)",
-                textAlign: "center",
+                padding: "12px 0", fontSize: 12,
+                color: "var(--text-muted)", textAlign: "center",
               }}>
                 Showing 50 of {filtered.length} readings — export CSV for full history.
               </div>
@@ -630,13 +445,10 @@ export default function History() {
   );
 }
 
-/* ---------- Subcomponents ---------- */
-
 function StatCard({ icon, label, value, hint, tone }) {
   const meta = {
-    neutral: { fg: "var(--text)", bg: "var(--surface-alt)" },
-    good:    { fg: "var(--good)", bg: "var(--accent-soft)" },
-    warn:    { fg: "var(--warn)", bg: "var(--warn-soft)" },
+    good: { fg: "var(--good)", bg: "var(--accent-soft)" },
+    warn: { fg: "var(--warn)", bg: "var(--warn-soft)" },
   }[tone] || { fg: "var(--text)", bg: "var(--surface-alt)" };
 
   return (
@@ -644,8 +456,7 @@ function StatCard({ icon, label, value, hint, tone }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <span style={{
           width: 28, height: 28, borderRadius: 8,
-          background: meta.bg,
-          color: meta.fg,
+          background: meta.bg, color: meta.fg,
           display: "grid", placeItems: "center",
         }}>
           {icon}
@@ -653,16 +464,13 @@ function StatCard({ icon, label, value, hint, tone }) {
         <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{label}</span>
       </div>
       <div style={{
-        fontSize: 24, fontWeight: 600,
-        color: meta.fg, letterSpacing: "-0.5px",
-        lineHeight: 1.1,
+        fontSize: 24, fontWeight: 600, color: meta.fg,
+        letterSpacing: "-0.5px", lineHeight: 1.1,
       }}>
         {value}
       </div>
       {hint && (
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
-          {hint}
-        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>{hint}</div>
       )}
     </div>
   );
@@ -671,13 +479,9 @@ function StatCard({ icon, label, value, hint, tone }) {
 function Th({ children, align = "left" }) {
   return (
     <th style={{
-      padding: "10px 12px",
-      fontSize: 11,
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
-      color: "var(--text-muted)",
-      fontWeight: 600,
-      textAlign: align,
+      padding: "10px 12px", fontSize: 11,
+      textTransform: "uppercase", letterSpacing: 0.5,
+      color: "var(--text-muted)", fontWeight: 600, textAlign: align,
     }}>
       {children}
     </th>
@@ -687,13 +491,8 @@ function Th({ children, align = "left" }) {
 function Td({ children, align = "left", muted, strong }) {
   return (
     <td style={{
-      padding: "12px",
-      textAlign: align,
-      color: muted
-        ? "var(--text-muted)"
-        : strong
-        ? "var(--text)"
-        : "var(--text)",
+      padding: "12px", textAlign: align,
+      color: muted ? "var(--text-muted)" : "var(--text)",
       fontWeight: strong ? 600 : 400,
       whiteSpace: "nowrap",
     }}>
@@ -702,16 +501,11 @@ function Td({ children, align = "left", muted, strong }) {
   );
 }
 
-/* ---------- Styles ---------- */
-
 const selectStyle = {
   padding: "10px 16px",
   borderRadius: "var(--radius-pill)",
   border: "1px solid var(--border)",
   background: "var(--surface)",
-  color: "var(--text)",
-  fontSize: 13,
-  cursor: "pointer",
-  outline: "none",
-  minWidth: 150,
+  color: "var(--text)", fontSize: 13,
+  cursor: "pointer", outline: "none", minWidth: 150,
 };
