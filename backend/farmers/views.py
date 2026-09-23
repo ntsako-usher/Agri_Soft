@@ -6,7 +6,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Farmer, Message
-from .serializers import MessageSerializer, RegisterSerializer
+from .serializers import (
+    ChangePasswordSerializer,
+    MessageSerializer,
+    RegisterSerializer,
+)
 
 
 class RegisterView(APIView):
@@ -28,6 +32,7 @@ class RegisterView(APIView):
                     "email": farmer.email,
                     "phone": farmer.phone,
                     "status": farmer.status,
+                    "role": farmer.role,
                     "message": "Account created. Awaiting admin approval.",
                 },
                 status=status.HTTP_201_CREATED,
@@ -75,14 +80,12 @@ class MessageViewSet(viewsets.ModelViewSet):
             models.Q(sender=user) | models.Q(recipient=user)
         ).order_by("created_at")
 
-        # Optional filter: /messages/?with=<farmer_id>
         with_id = self.request.query_params.get("with")
         if with_id:
             qs = qs.filter(
                 models.Q(sender=user, recipient_id=with_id) |
                 models.Q(sender_id=with_id, recipient=user)
             )
-
         return qs
 
     def perform_create(self, serializer):
@@ -99,11 +102,7 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="conversations")
     def conversations(self, request):
-        """
-        Admin-only: returns a list of farmers who have exchanged messages
-        with the current user (admin). Each entry includes the farmer's
-        info + the last message + unread count.
-        """
+        """Admin-only: list farmers the admin has chatted with."""
         if not request.user.is_staff:
             return Response(
                 {"detail": "Only admins can list conversations."},
@@ -111,13 +110,10 @@ class MessageViewSet(viewsets.ModelViewSet):
             )
 
         me = request.user
-
-        # All messages involving me
         qs = Message.objects.filter(
             models.Q(sender=me) | models.Q(recipient=me)
         ).select_related("sender", "recipient")
 
-        # Group by the OTHER farmer
         convo_map = {}
         for msg in qs.order_by("created_at"):
             other = msg.recipient if msg.sender_id == me.id else msg.sender
@@ -127,6 +123,7 @@ class MessageViewSet(viewsets.ModelViewSet):
                 "farmer_id": other.id,
                 "name": other.name,
                 "email": other.email,
+                "role": other.role,
                 "last_message": "",
                 "last_at": None,
                 "unread": 0,
@@ -136,10 +133,27 @@ class MessageViewSet(viewsets.ModelViewSet):
             if msg.recipient_id == me.id and not msg.is_read:
                 entry["unread"] += 1
 
-        # Sort by most recent first
         convo_list = sorted(
             convo_map.values(),
             key=lambda c: c["last_at"] or "",
             reverse=True,
         )
         return Response(convo_list)
+
+
+class ChangePasswordView(APIView):
+    """
+    POST /api/farmers/change-password/
+    Body: { old_password, new_password }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(
+            data=request.data,
+            context={"request": request},
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"detail": "Password updated successfully."})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

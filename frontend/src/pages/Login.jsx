@@ -5,8 +5,8 @@ import { api, decodeJWT } from "../api/client";
 
 export default function Login() {
   const nav = useNavigate();
-  const [email, setEmail] = useState("tumiso@softagri.local");
-  const [password, setPassword] = useState("farmer123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 

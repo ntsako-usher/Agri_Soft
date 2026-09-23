@@ -31,6 +31,27 @@ class Farm(models.Model):
         default=Status.PENDING,
     )
 
+    # ---- Technician assignment ----
+    technician = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_farms",
+        limit_choices_to={"role": "technician"},
+        db_column="technician_id",
+        help_text="Technician responsible for installing/maintaining devices on this farm.",
+    )
+    service_requested = models.BooleanField(
+        default=False,
+        help_text="Set to true when this farm needs a technician visit.",
+    )
+    service_notes = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Instructions or notes for the assigned technician.",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -39,6 +60,7 @@ class Farm(models.Model):
         indexes = [
             models.Index(fields=["farmer"]),
             models.Index(fields=["status"]),
+            models.Index(fields=["technician"]),
         ]
         verbose_name = "Farm"
         verbose_name_plural = "Farms"

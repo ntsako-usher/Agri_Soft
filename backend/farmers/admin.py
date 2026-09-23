@@ -7,20 +7,26 @@ from .models import Farmer, Message
 
 @admin.register(Farmer)
 class FarmerAdmin(BaseUserAdmin):
-    list_display = ("email", "name", "status_badge", "is_staff", "is_active", "created_at")
-    list_editable = ("is_staff", "is_active")   # status now edited via actions
-    list_filter = ("status", "is_staff", "is_active")
+    list_display = (
+        "email", "name", "role", "status_badge",
+        "is_staff", "is_active", "created_at",
+    )
+    list_editable = ("is_staff", "is_active")
+    list_filter = ("role", "status", "is_staff", "is_active")
     search_fields = ("email", "name", "phone")
     ordering = ("-created_at",)
 
-    actions = ("approve_farmers", "reject_farmers", "reset_to_pending")
+    actions = (
+        "approve_farmers", "reject_farmers", "reset_to_pending",
+        "make_farmer", "make_technician",
+    )
     actions_on_top = True
     actions_on_bottom = True
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
         ("Personal info", {"fields": ("name", "phone")}),
-        ("Status", {"fields": ("status",)}),
+        ("Status & role", {"fields": ("status", "role")}),
         (
             "Permissions",
             {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")},
@@ -34,18 +40,17 @@ class FarmerAdmin(BaseUserAdmin):
             None,
             {
                 "classes": ("wide",),
-                "fields": ("email", "name", "phone", "password1", "password2", "status"),
+                "fields": ("email", "name", "phone", "password1", "password2", "status", "role"),
             },
         ),
     )
 
-    # ---------- Color-coded status column ----------
     @admin.display(description="Status", ordering="status")
     def status_badge(self, obj):
         colors = {
-            Farmer.Status.APPROVED: ("#0f5132", "#d1e7dd"),  # green
-            Farmer.Status.PENDING:  ("#664d03", "#fff3cd"),  # amber
-            Farmer.Status.REJECTED: ("#842029", "#f8d7da"),  # red
+            Farmer.Status.APPROVED: ("#0f5132", "#d1e7dd"),
+            Farmer.Status.PENDING:  ("#664d03", "#fff3cd"),
+            Farmer.Status.REJECTED: ("#842029", "#f8d7da"),
         }
         fg, bg = colors.get(obj.status, ("#333", "#eee"))
         return format_html(
@@ -54,7 +59,6 @@ class FarmerAdmin(BaseUserAdmin):
             fg, bg, obj.get_status_display(),
         )
 
-    # ---------- Admin actions ----------
     @admin.action(description="✅ Approve selected farmers")
     def approve_farmers(self, request, queryset):
         updated = queryset.update(status=Farmer.Status.APPROVED, is_active=True)
@@ -70,6 +74,16 @@ class FarmerAdmin(BaseUserAdmin):
         updated = queryset.update(status=Farmer.Status.PENDING)
         self.message_user(request, f"{updated} farmer(s) set to pending.")
 
+    @admin.action(description="👨‍🌾 Set role → Farmer")
+    def make_farmer(self, request, queryset):
+        updated = queryset.update(role=Farmer.Role.FARMER)
+        self.message_user(request, f"{updated} account(s) set to Farmer.")
+
+    @admin.action(description="🔧 Set role → Technician")
+    def make_technician(self, request, queryset):
+        updated = queryset.update(role=Farmer.Role.TECHNICIAN)
+        self.message_user(request, f"{updated} account(s) set to Technician.")
+
 
 @admin.register(Message)
 class MessageAdmin(admin.ModelAdmin):
@@ -80,7 +94,6 @@ class MessageAdmin(admin.ModelAdmin):
     date_hierarchy = "created_at"
     list_per_page = 50
 
-    # Only the timestamp is read-only — sender/recipient/body are editable
     readonly_fields = ("created_at",)
 
     actions = ("mark_as_read", "mark_as_unread")
@@ -105,7 +118,6 @@ class MessageAdmin(admin.ModelAdmin):
         text = obj.body or ""
         return text[:60] + ("…" if len(text) > 60 else "")
 
-    # ---------- Admin actions ----------
     @admin.action(description="✔ Mark selected messages as read")
     def mark_as_read(self, request, queryset):
         updated = queryset.update(is_read=True)

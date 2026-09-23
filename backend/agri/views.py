@@ -21,15 +21,64 @@ from .serializers import (
 # CRUD ViewSets
 # =========================================================================
 class FarmViewSet(viewsets.ModelViewSet):
-    """List/retrieve farms belonging to the logged-in farmer."""
+    """
+    Farms visible to the logged-in user:
+    - Farmers see their own farms.
+    - Technicians see farms assigned to them.
+    - Admins see everything.
+    """
     serializer_class = FarmSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Farm.objects.filter(farmer=self.request.user).order_by("-created_at")
+        user = self.request.user
+        qs = Farm.objects.all().select_related("farmer", "technician")
+
+        if user.is_staff:
+            return qs.order_by("-created_at")
+        if getattr(user, "role", None) == "technician":
+            return qs.filter(technician=user).order_by("-created_at")
+        return qs.filter(farmer=user).order_by("-created_at")
 
     def perform_create(self, serializer):
         serializer.save(farmer=self.request.user)
+
+    @action(detail=True, methods=["post"], url_path="assign-technician",
+            permission_classes=[IsAuthenticated])
+    def assign_technician(self, request, pk=None):
+        """
+        Admin-only: assign a technician to this farm.
+        POST /api/farms/{id}/assign-technician/
+        Body: { technician: <farmer_id>, service_notes: "optional" }
+        """
+        if not request.user.is_staff:
+            return Response(
+                {"detail": "Only admins can assign technicians."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        farm = self.get_object()
+        tech_id = request.data.get("technician")
+        notes = request.data.get("service_notes", "")
+
+        if tech_id:
+            from farmers.models import Farmer
+            try:
+                technician = Farmer.objects.get(id=tech_id, role=Farmer.Role.TECHNICIAN)
+            except Farmer.DoesNotExist:
+                return Response(
+                    {"detail": "Technician not found or account is not a technician."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            farm.technician = technician
+        else:
+            farm.technician = None
+
+        farm.service_notes = notes
+        farm.service_requested = bool(farm.technician)
+        farm.save(update_fields=["technician", "service_notes", "service_requested", "updated_at"])
+
+        return Response(FarmSerializer(farm).data)
 
 
 class DeviceViewSet(viewsets.ModelViewSet):

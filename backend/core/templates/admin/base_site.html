@@ -1,0 +1,20 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{{ title }} | Soft-Agri Admin{% endblock %}
+
+{% block branding %}
+<h1 id="site-name">
+    <a href="{% url 'admin:index' %}">
+        <span style="color:#fff;font-weight:700;">🌿 Soft-Agri</span>
+        <span style="color:#e3ede4;font-weight:400;font-size:13px;margin-left:8px;">
+            Admin Console
+        </span>
+    </a>
+</h1>
+{% endblock %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'admin/css/softagri_admin.css' %}">
+{% endblock %}

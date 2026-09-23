@@ -8,16 +8,32 @@ from .models import Farm, Device, SensorReading, Threshold, Alert, DeviceCommand
 class FarmAdmin(admin.ModelAdmin):
     list_display = (
         "id", "farm_name", "farmer", "status_badge",
+        "technician", "service_requested",
         "location_desc", "size_hectares", "timezone", "created_at",
     )
-    list_filter = ("status", "timezone")
-    search_fields = ("farm_name", "location_desc", "farmer__email", "farmer__name")
+    list_filter = ("status", "service_requested", "timezone")
+    search_fields = (
+        "farm_name", "location_desc",
+        "farmer__email", "farmer__name",
+        "technician__email", "technician__name",
+    )
     ordering = ("-created_at",)
     readonly_fields = ("created_at", "updated_at")
 
-    actions = ("approve_farms", "reject_farms", "reset_to_pending")
+    actions = (
+        "approve_farms", "reject_farms", "reset_to_pending",
+        "request_service",
+    )
     actions_on_top = True
     actions_on_bottom = True
+
+    fieldsets = (
+        (None, {"fields": ("farm_name", "farmer", "status")}),
+        ("Location", {"fields": ("location_desc", "latitude", "longitude", "timezone")}),
+        ("Size", {"fields": ("size_hectares",)}),
+        ("Service", {"fields": ("technician", "service_requested", "service_notes")}),
+        ("Metadata", {"fields": ("created_at", "updated_at")}),
+    )
 
     @admin.display(description="Status", ordering="status")
     def status_badge(self, obj):
@@ -47,6 +63,11 @@ class FarmAdmin(admin.ModelAdmin):
     def reset_to_pending(self, request, queryset):
         updated = queryset.update(status=Farm.Status.PENDING)
         self.message_user(request, f"{updated} farm(s) set to pending.")
+
+    @admin.action(description="🔧 Request technician service")
+    def request_service(self, request, queryset):
+        updated = queryset.update(service_requested=True)
+        self.message_user(request, f"{updated} farm(s) flagged for service.")
 
 
 @admin.register(Device)

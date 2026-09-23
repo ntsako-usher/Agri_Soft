@@ -20,6 +20,7 @@ class FarmerManager(BaseUserManager):
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_active", True)
         extra_fields.setdefault("status", Farmer.Status.APPROVED)
+        extra_fields.setdefault("role", Farmer.Role.ADMIN)
 
         if extra_fields.get("is_staff") is not True:
             raise ValueError("Superuser must have is_staff=True.")
@@ -32,14 +33,21 @@ class FarmerManager(BaseUserManager):
 class Farmer(AbstractBaseUser, PermissionsMixin):
     """
     Custom user model for Soft-Agri.
-    Represents a farmer who owns one or more farms.
-    Admin access is granted via is_staff / is_superuser (Django built-in).
+
+    Every account (farmer, technician, admin) lives in this single table.
+    - `role` distinguishes the business role.
+    - `is_staff` / `is_superuser` grant Django admin access.
     """
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
         APPROVED = "approved", "Approved"
         REJECTED = "rejected", "Rejected"
+
+    class Role(models.TextChoices):
+        FARMER = "farmer", "Farmer"
+        TECHNICIAN = "technician", "Technician"
+        ADMIN = "admin", "Admin"
 
     name = models.CharField(max_length=120)
     email = models.EmailField(max_length=180, unique=True)
@@ -48,6 +56,12 @@ class Farmer(AbstractBaseUser, PermissionsMixin):
         max_length=10,
         choices=Status.choices,
         default=Status.PENDING,
+    )
+    role = models.CharField(
+        max_length=20,
+        choices=Role.choices,
+        default=Role.FARMER,
+        help_text="Business role: farmer, technician, or admin.",
     )
 
     # Django-required flags
@@ -70,10 +84,11 @@ class Farmer(AbstractBaseUser, PermissionsMixin):
         verbose_name_plural = "Farmers"
         indexes = [
             models.Index(fields=["status"]),
+            models.Index(fields=["role"]),
         ]
 
     def __str__(self):
-        return f"{self.name} <{self.email}>"
+        return f"{self.name} <{self.email}> [{self.role}]"
 
     @property
     def is_approved(self):
@@ -82,8 +97,8 @@ class Farmer(AbstractBaseUser, PermissionsMixin):
 
 class Message(models.Model):
     """
-    Farmer ↔ Admin chat.
-    Any farmer can message any other farmer (in practice, farmers message the admin).
+    Direct message between two Farmer rows.
+    In practice: farmer ↔ admin, and (later) farmer ↔ technician.
     """
 
     sender = models.ForeignKey(

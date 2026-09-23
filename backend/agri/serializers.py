@@ -8,6 +8,9 @@ from .models import Farm, Device, SensorReading, Threshold, Alert, DeviceCommand
 # =========================================================================
 class FarmSerializer(serializers.ModelSerializer):
     farmer_name = serializers.CharField(source="farmer.name", read_only=True)
+    technician_name = serializers.CharField(
+        source="technician.name", read_only=True, default=None
+    )
 
     class Meta:
         model = Farm
@@ -21,10 +24,25 @@ class FarmSerializer(serializers.ModelSerializer):
             "longitude",
             "size_hectares",
             "timezone",
+            "status",
+            "technician",
+            "technician_name",
+            "service_requested",
+            "service_notes",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "farmer", "created_at", "updated_at")
+        read_only_fields = (
+            "id",
+            "farmer",
+            "status",
+            "technician",
+            "technician_name",
+            "service_requested",
+            "service_notes",
+            "created_at",
+            "updated_at",
+        )
 
 
 # =========================================================================
