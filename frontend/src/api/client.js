@@ -63,7 +63,6 @@ export const api = {
   farms:      () => client.get("/farms/"),
   createFarm: (payload) => client.post("/farms/", payload),
 
- 
   // Devices & data
   devices:      (farmId) => client.get(farmId ? `/devices/?farm=${farmId}` : "/devices/"),
   device:       (id) => client.get(`/devices/${id}/`),
@@ -79,9 +78,13 @@ export const api = {
   createAlert:  (payload) => client.post("/alerts/", payload),
   resolveAlert: (id) => client.patch(`/alerts/${id}/resolve/`),
   reopenAlert:  (id) => client.patch(`/alerts/${id}/reopen/`),
-  deleteAlert:  (id) => client.delete(`/alerts/${id}/`),   
-  
+  deleteAlert:  (id) => client.delete(`/alerts/${id}/`),
 
+  // Messages (farmer ↔ admin chat)
+  adminId:          () => client.get("/farmers/admin-id/"),
+  messages:         () => client.get("/farmers/messages/"),
+  sendMessage:      (payload) => client.post("/farmers/messages/", payload),
+  markMessageRead:  (id) => client.patch(`/farmers/messages/${id}/`, { is_read: true }),
 
   // Commands / irrigation
   commands:   () => client.get("/commands/"),

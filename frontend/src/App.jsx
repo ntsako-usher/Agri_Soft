@@ -6,6 +6,7 @@ import History from "./pages/History";
 import Alerts from "./pages/Alerts";
 import Devices from "./pages/Devices";
 import Settings from "./pages/Settings";
+import Messages from "./pages/Messages";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import SignupSuccess from "./pages/SignupSuccess";
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="/history" element={<RequireAuth><Layout><History /></Layout></RequireAuth>} />
         <Route path="/alerts" element={<RequireAuth><Layout><Alerts /></Layout></RequireAuth>} />
         <Route path="/devices" element={<RequireAuth><Layout><Devices /></Layout></RequireAuth>} />
+        <Route path="/messages" element={<RequireAuth><Layout><Messages /></Layout></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><Layout><Settings /></Layout></RequireAuth>} />
       </Routes>
     </BrowserRouter>

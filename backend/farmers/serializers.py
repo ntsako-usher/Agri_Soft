@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import Farmer
+from .models import Farmer, Message
 
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -13,11 +13,9 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["username"] = serializers.CharField(required=False, write_only=True)
-        # Make email optional at field level so 'username' alone can succeed
         self.fields[self.username_field].required = False
 
     def validate(self, attrs):
-        # If only 'username' was sent, treat it as 'email'
         if not attrs.get(self.username_field) and attrs.get("username"):
             attrs[self.username_field] = attrs.pop("username")
         attrs.pop("username", None)
@@ -34,6 +32,7 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         token["name"] = user.name
         token["email"] = user.email
         token["status"] = user.status
+        token["is_staff"] = user.is_staff   # NEW
         return token
 
 
@@ -45,12 +44,6 @@ class FarmerSerializer(serializers.ModelSerializer):
 
 
 class RegisterSerializer(serializers.ModelSerializer):
-    """
-    Signup serializer. Creates a Farmer with status=PENDING.
-    Accepts optional 'address' from the frontend and stores it in 'phone'
-    only if phone wasn't sent — otherwise ignores it (no address column on model).
-    """
-
     password = serializers.CharField(write_only=True, min_length=6)
     confirm_password = serializers.CharField(write_only=True, required=False)
     address = serializers.CharField(write_only=True, required=False, allow_blank=True)
@@ -71,7 +64,6 @@ class RegisterSerializer(serializers.ModelSerializer):
         confirm = attrs.pop("confirm_password", None)
         if confirm is not None and pw != confirm:
             raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
-        # 'address' is accepted but not stored (no model field) — drop it
         attrs.pop("address", None)
         return attrs
 
@@ -82,3 +74,20 @@ class RegisterSerializer(serializers.ModelSerializer):
         farmer.status = Farmer.Status.PENDING
         farmer.save()
         return farmer
+
+
+class MessageSerializer(serializers.ModelSerializer):
+    sender_name = serializers.CharField(source="sender.name", read_only=True)
+    recipient_name = serializers.CharField(source="recipient.name", read_only=True)
+
+    class Meta:
+        model = Message
+        fields = (
+            "id",
+            "sender", "sender_name",
+            "recipient", "recipient_name",
+            "body",
+            "is_read",
+            "created_at",
+        )
+        read_only_fields = ("id", "sender", "is_read", "created_at")

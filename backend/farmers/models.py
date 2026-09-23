@@ -78,3 +78,38 @@ class Farmer(AbstractBaseUser, PermissionsMixin):
     @property
     def is_approved(self):
         return self.status == self.Status.APPROVED
+
+
+class Message(models.Model):
+    """
+    Farmer ↔ Admin chat.
+    Any farmer can message any other farmer (in practice, farmers message the admin).
+    """
+
+    sender = models.ForeignKey(
+        Farmer,
+        on_delete=models.CASCADE,
+        related_name="sent_messages",
+    )
+    recipient = models.ForeignKey(
+        Farmer,
+        on_delete=models.CASCADE,
+        related_name="received_messages",
+    )
+    body = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+
+    class Meta:
+        db_table = "messages"
+        ordering = ["created_at"]
+        verbose_name = "Message"
+        verbose_name_plural = "Messages"
+        indexes = [
+            models.Index(fields=["sender", "created_at"]),
+            models.Index(fields=["recipient", "created_at"]),
+            models.Index(fields=["is_read"]),
+        ]
+
+    def __str__(self):
+        return f"{self.sender.email} → {self.recipient.email}: {self.body[:40]}"

@@ -1,5 +1,7 @@
 import { NavLink } from "react-router-dom";
-import { LayoutGrid, Activity, History, Bell, Cpu, Settings, Leaf } from "lucide-react";
+import {
+  LayoutGrid, Activity, History, Bell, Cpu, Settings, Leaf, MessageSquare,
+} from "lucide-react";
 
 const items = [
   { to: "/",          label: "Overview",   icon: LayoutGrid, end: true },
@@ -7,6 +9,7 @@ const items = [
   { to: "/history",    label: "History",    icon: History },
   { to: "/alerts",     label: "Alerts",     icon: Bell },
   { to: "/devices",    label: "Devices",    icon: Cpu },
+  { to: "/messages",   label: "Messages",   icon: MessageSquare },
   { to: "/settings",   label: "Settings",   icon: Settings },
 ];
 
