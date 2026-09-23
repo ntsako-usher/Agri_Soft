@@ -8,6 +8,8 @@ export default function NewFarm() {
   const user = currentUser();
   const [form, setForm] = useState({
     farm_name: "",
+    location_address: "",
+    location_description: "",
     size_hectares: "",
     timezone: "Africa/Johannesburg",
   });
@@ -31,6 +33,8 @@ export default function NewFarm() {
     try {
       const payload = {
         farm_name: form.farm_name.trim(),
+        location_address: form.location_address.trim(),
+        location_description: form.location_description.trim(),
         size_hectares: form.size_hectares ? Number(form.size_hectares) : null,
         timezone: form.timezone || "Africa/Johannesburg",
       };
@@ -145,6 +149,20 @@ export default function NewFarm() {
          
          
           <Field
+            label="Specific Address"
+            placeholder="e.g. 123 Farm Road, Pretoria"
+            value={form.location_address}
+            onChange={change("location_address")}
+            icon={<MapPin size={14} />}
+          />
+          <Field
+            label="Location Description"
+            placeholder="e.g. Near the R101, next to the river"
+            value={form.location_description}
+            onChange={change("location_description")}
+            icon={<Compass size={14} />}
+          />
+          <Field
             label="Size (hectares)"
             placeholder="e.g. 12.4"
             type="number"
@@ -153,13 +171,46 @@ export default function NewFarm() {
             onChange={change("size_hectares")}
             icon={<Ruler size={14} />}
           />
-          <Field
-            label="Timezone"
-            placeholder="Africa/Johannesburg"
-            value={form.timezone}
-            onChange={change("timezone")}
-            icon={<Clock size={14} />}
-          />
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>
+              Timezone
+            </span>
+            <div style={{ position: "relative" }}>
+              <span style={{
+                position: "absolute", left: 14, top: "50%",
+                transform: "translateY(-50%)",
+                color: "var(--text-muted)", pointerEvents: "none",
+                display: "flex",
+              }}>
+                <Clock size={14} />
+              </span>
+              <select
+                value={form.timezone}
+                onChange={change("timezone")}
+                style={{
+                  width: "100%",
+                  padding: "11px 14px 11px 40px",
+                  borderRadius: "var(--radius-sm)",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-alt)",
+                  color: "var(--text)", fontSize: 14,
+                  outline: "none", boxSizing: "border-box",
+                  appearance: "none",
+                }}
+              >
+                <option value="Africa/Johannesburg">Africa/Johannesburg — South Africa</option>
+                <option value="Africa/Harare">Africa/Harare — Zimbabwe</option>
+                <option value="Africa/Gaborone">Africa/Gaborone — Botswana</option>
+                <option value="Africa/Maputo">Africa/Maputo — Mozambique</option>
+                <option value="Africa/Windhoek">Africa/Windhoek — Namibia</option>
+                <option value="Africa/Lusaka">Africa/Lusaka — Zambia</option>
+                <option value="Africa/Lagos">Africa/Lagos — Nigeria</option>
+                <option value="Africa/Cairo">Africa/Cairo — Egypt</option>
+                <option value="Europe/London">Europe/London — United Kingdom</option>
+                <option value="UTC">UTC — UTC</option>
+              </select>
+            </div>
+          </label>
 
           {err && (
             <div style={{

@@ -23,8 +23,18 @@ export default function Sidebar() {
         <div style={{
           width: 32, height: 32, borderRadius: 10,
           background: "var(--accent-soft)", display: "grid", placeItems: "center",
+          overflow: "hidden",
         }}>
-          <Leaf size={16} color="var(--accent)" />
+          <img
+            src="https://images.unsplash.com/photo-1501004318641-b39e6451bec6?auto=format&fit=crop&w=120&q=80"
+            alt="SOFT-AGRI"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
         </div>
         <strong style={{ letterSpacing: 1 }}>SOFT-AGRI</strong>
       </div>

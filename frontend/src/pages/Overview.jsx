@@ -286,6 +286,41 @@ export default function Overview() {
             </div>
           </div>
 
+          <div className="card" style={{
+            marginBottom: 16,
+            padding: "18px 20px",
+            background: "linear-gradient(135deg, rgba(117, 163, 122, 0.12), rgba(70, 109, 84, 0.04))",
+          }}>
+            <div style={{
+              display: "flex", justifyContent: "space-between",
+              alignItems: "center", marginBottom: 10,
+            }}>
+              <div style={{
+                display: "flex", gap: 8, alignItems: "center",
+                fontSize: 14, fontWeight: 600, color: "var(--text)",
+              }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: "50%",
+                  background: "var(--accent)", display: "inline-block",
+                }} />
+                AI Farm Advice
+              </div>
+              <span style={{
+                fontSize: 11, padding: "5px 10px",
+                borderRadius: "var(--radius-pill)",
+                background: "var(--warn-soft)", color: "var(--warn)",
+                fontWeight: 600,
+              }}>
+                Heat Wave Detected
+              </span>
+            </div>
+            <div style={{
+              color: "var(--text)", fontSize: 14, lineHeight: 1.7,
+            }}>
+              Temperatures are high today. Check your soil moisture and consider watering your crops more frequently.
+            </div>
+          </div>
+
           {/* Top row: 3 cards */}
           <div style={{
             display: "grid",
