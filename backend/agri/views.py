@@ -18,7 +18,33 @@ from .serializers import (
 
 
 # =========================================================================
-# CRUD ViewSets
+# Helpers
+# =========================================================================
+def _is_admin(user):
+    return bool(user and user.is_staff)
+
+
+def _is_technician(user):
+    return bool(user and getattr(user, "role", None) == "technician")
+
+
+def _farms_visible_to(user):
+    """
+    Return the queryset of Farms the given user is allowed to see.
+    - Admin: all farms
+    - Technician: farms assigned to them
+    - Farmer: farms they own
+    """
+    qs = Farm.objects.all().select_related("farmer", "technician")
+    if _is_admin(user):
+        return qs
+    if _is_technician(user):
+        return qs.filter(technician=user)
+    return qs.filter(farmer=user)
+
+
+# =========================================================================
+# Farm
 # =========================================================================
 class FarmViewSet(viewsets.ModelViewSet):
     """
@@ -31,23 +57,23 @@ class FarmViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        qs = Farm.objects.all().select_related("farmer", "technician")
-
-        if user.is_staff:
-            return qs.order_by("-created_at")
-        if getattr(user, "role", None) == "technician":
-            return qs.filter(technician=user).order_by("-created_at")
-        return qs.filter(farmer=user).order_by("-created_at")
+        return _farms_visible_to(self.request.user).order_by("-created_at")
 
     def perform_create(self, serializer):
+        # Only farmers can create farms. A technician should never create one.
+        if _is_technician(self.request.user):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Technicians cannot create farms.")
         serializer.save(farmer=self.request.user)
 
+    # ---------------------------------------------------------------------
+    # Admin: assign a technician to a farm
+    # ---------------------------------------------------------------------
     @action(detail=True, methods=["post"], url_path="assign-technician",
             permission_classes=[IsAuthenticated])
     def assign_technician(self, request, pk=None):
         """
-        Admin-only: assign a technician to this farm.
+        Admin-only.
         POST /api/farms/{id}/assign-technician/
         Body: { technician: <farmer_id>, service_notes: "optional" }
         """
@@ -76,29 +102,113 @@ class FarmViewSet(viewsets.ModelViewSet):
 
         farm.service_notes = notes
         farm.service_requested = bool(farm.technician)
-        farm.save(update_fields=["technician", "service_notes", "service_requested", "updated_at"])
+        farm.save(update_fields=[
+            "technician", "service_notes", "service_requested", "updated_at"
+        ])
+
+        # TODO: notify the technician by email/SMS.
 
         return Response(FarmSerializer(farm).data)
 
+    # ---------------------------------------------------------------------
+    # Technician: mark the assigned job as done
+    # ---------------------------------------------------------------------
+    @action(detail=True, methods=["post"], url_path="mark-service-done",
+            permission_classes=[IsAuthenticated])
+    def mark_service_done(self, request, pk=None):
+        """
+        Technician-only.
+        POST /api/farms/{id}/mark-service-done/
+        Body: { service_notes: "what was done", clear_technician: true|false }
 
+        Clears the service_requested flag so the admin/farmer knows the
+        job is done. By default the technician stays assigned (so history
+        is preserved); pass clear_technician=true to release them.
+        """
+        farm = self.get_object()
+        user = request.user
+
+        if not (_is_technician(user) and farm.technician_id == user.id):
+            return Response(
+                {"detail": "Only the assigned technician can mark this job done."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        notes = request.data.get("service_notes", "")
+        clear = bool(request.data.get("clear_technician", False))
+
+        farm.service_requested = False
+        if notes:
+            existing = farm.service_notes or ""
+            farm.service_notes = (existing + "\n\n---\n" + notes).strip()
+        if clear:
+            farm.technician = None
+
+        farm.save(update_fields=[
+            "service_requested", "service_notes",
+            "technician", "updated_at",
+        ])
+
+        # TODO: notify admin + farmer by email/SMS.
+
+        return Response(FarmSerializer(farm).data)
+
+    # ---------------------------------------------------------------------
+    # Admin: list farms that still need service
+    # ---------------------------------------------------------------------
+    @action(detail=False, methods=["get"], url_path="pending-service",
+            permission_classes=[IsAuthenticated])
+    def pending_service(self, request):
+        """
+        Admin-only.
+        GET /api/farms/pending-service/
+        Returns farms with service_requested=True (either unassigned or in progress).
+        """
+        if not request.user.is_staff:
+            return Response(
+                {"detail": "Admin only."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        qs = Farm.objects.filter(service_requested=True).select_related(
+            "farmer", "technician"
+        ).order_by("-updated_at")
+        return Response(FarmSerializer(qs, many=True).data)
+
+
+# =========================================================================
+# Device
+# =========================================================================
 class DeviceViewSet(viewsets.ModelViewSet):
     serializer_class = DeviceSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Device.objects.filter(
-            farm__farmer=self.request.user
-        ).select_related("farm").order_by("-created_at")
+        user = self.request.user
+        farm_ids = _farms_visible_to(user).values_list("id", flat=True)
+        return (
+            Device.objects
+            .filter(farm_id__in=farm_ids)
+            .select_related("farm")
+            .order_by("-created_at")
+        )
 
 
+# =========================================================================
+# SensorReading
+# =========================================================================
 class SensorReadingViewSet(viewsets.ModelViewSet):
     serializer_class = SensorReadingSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        qs = SensorReading.objects.filter(
-            device__farm__farmer=self.request.user
-        ).select_related("device")
+        user = self.request.user
+        farm_ids = _farms_visible_to(user).values_list("id", flat=True)
+
+        qs = (
+            SensorReading.objects
+            .filter(device__farm_id__in=farm_ids)
+            .select_related("device")
+        )
 
         # Optional filters: ?device=<id>&range=24h|7d|30d
         device_id = self.request.query_params.get("device")
@@ -112,28 +222,42 @@ class SensorReadingViewSet(viewsets.ModelViewSet):
         return qs.order_by("-recorded_at")
 
 
+# =========================================================================
+# Threshold
+# =========================================================================
 class ThresholdViewSet(viewsets.ModelViewSet):
     serializer_class = ThresholdSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Threshold.objects.filter(
-            device__farm__farmer=self.request.user
-        ).select_related("device")
+        user = self.request.user
+        farm_ids = _farms_visible_to(user).values_list("id", flat=True)
+        return (
+            Threshold.objects
+            .filter(device__farm_id__in=farm_ids)
+            .select_related("device")
+        )
 
 
+# =========================================================================
+# Alert
+# =========================================================================
 class AlertViewSet(viewsets.ModelViewSet):
     serializer_class = AlertSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Alert.objects.filter(
-            device__farm__farmer=self.request.user
-        ).select_related("device", "device__farm")
+        user = self.request.user
+        farm_ids = _farms_visible_to(user).values_list("id", flat=True)
+        return (
+            Alert.objects
+            .filter(device__farm_id__in=farm_ids)
+            .select_related("device", "device__farm")
+        )
 
     @action(detail=True, methods=["patch"])
     def resolve(self, request, pk=None):
-        """Mark an alert as resolved. POST /api/alerts/{id}/resolve/"""
+        """Mark an alert as resolved. PATCH /api/alerts/{id}/resolve/"""
         alert = self.get_object()
         alert.is_resolved = True
         alert.resolved_at = timezone.now()
@@ -142,7 +266,7 @@ class AlertViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["patch"])
     def reopen(self, request, pk=None):
-        """Reopen a resolved alert. POST /api/alerts/{id}/reopen/"""
+        """Reopen a resolved alert. PATCH /api/alerts/{id}/reopen/"""
         alert = self.get_object()
         alert.is_resolved = False
         alert.resolved_at = None
@@ -150,14 +274,21 @@ class AlertViewSet(viewsets.ModelViewSet):
         return Response(AlertSerializer(alert).data)
 
 
+# =========================================================================
+# DeviceCommand
+# =========================================================================
 class DeviceCommandViewSet(viewsets.ModelViewSet):
     serializer_class = DeviceCommandSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return DeviceCommand.objects.filter(
-            device__farm__farmer=self.request.user
-        ).select_related("device", "issued_by")
+        user = self.request.user
+        farm_ids = _farms_visible_to(user).values_list("id", flat=True)
+        return (
+            DeviceCommand.objects
+            .filter(device__farm_id__in=farm_ids)
+            .select_related("device", "issued_by")
+        )
 
 
 # =========================================================================
@@ -198,9 +329,16 @@ def sensor_data_ingest(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def overview(request):
-    """Dashboard summary for a field. /api/overview/?field=<farm_id>"""
+    """
+    Dashboard summary for a farm.
+    /api/overview/?field=<farm_id>
+
+    Farmers see their own farms.
+    Technicians see farms assigned to them.
+    Admins see all.
+    """
     farm_id = request.query_params.get("field")
-    farms = Farm.objects.filter(farmer=request.user)
+    farms = _farms_visible_to(request.user)
     if farm_id:
         farms = farms.filter(id=farm_id)
 
@@ -225,7 +363,11 @@ def overview(request):
     online_devices = Device.objects.filter(farm=farm, status=Device.Status.ONLINE).count()
 
     return Response({
-        "farm": {"id": farm.id, "name": farm.farm_name, "size_hectares": farm.size_hectares},
+        "farm": {
+            "id": farm.id,
+            "name": farm.farm_name,
+            "size_hectares": farm.size_hectares,
+        },
         "soilMoisture": {
             "value": float(latest.moisture) if latest and latest.moisture is not None else None,
             "unit": "%",
@@ -250,9 +392,12 @@ def overview(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def monitoring(request):
-    """Live monitoring snapshot. /api/monitoring/?field=<farm_id>"""
+    """
+    Live monitoring snapshot. /api/monitoring/?field=<farm_id>
+    Same role-scoping as overview.
+    """
     farm_id = request.query_params.get("field")
-    farms = Farm.objects.filter(farmer=request.user)
+    farms = _farms_visible_to(request.user)
     if farm_id:
         farms = farms.filter(id=farm_id)
     farm = farms.first()
@@ -276,13 +421,20 @@ def monitoring(request):
             "sensor": latest.device.name,
         },
         "sensors": [
-            {"key": "temperature", "label": "Air temperature", "value": float(latest.temp_c or 0), "unit": "°C"},
-            {"key": "humidity", "label": "Relative humidity", "value": float(latest.humidity or 0), "unit": "%"},
-            {"key": "pressure", "label": "Pressure", "value": float(latest.pressure_hpa or 0), "unit": " hPa"},
-            {"key": "light", "label": "Light intensity", "value": latest.light_level or 0, "unit": ""},
-            {"key": "rain", "label": "Rain sensor", "value": "Wet" if latest.rain_detected else "Dry", "unit": ""},
-            {"key": "smoke", "label": "Smoke detection", "value": latest.smoke_level or 0, "unit": ""},
-            {"key": "motion", "label": "Motion security", "value": "Detected" if latest.motion_detected else "Clear", "unit": ""},
+            {"key": "temperature", "label": "Air temperature",
+             "value": float(latest.temp_c or 0), "unit": "°C"},
+            {"key": "humidity", "label": "Relative humidity",
+             "value": float(latest.humidity or 0), "unit": "%"},
+            {"key": "pressure", "label": "Pressure",
+             "value": float(latest.pressure_hpa or 0), "unit": " hPa"},
+            {"key": "light", "label": "Light intensity",
+             "value": latest.light_level or 0, "unit": ""},
+            {"key": "rain", "label": "Rain sensor",
+             "value": "Wet" if latest.rain_detected else "Dry", "unit": ""},
+            {"key": "smoke", "label": "Smoke detection",
+             "value": latest.smoke_level or 0, "unit": ""},
+            {"key": "motion", "label": "Motion security",
+             "value": "Detected" if latest.motion_detected else "Clear", "unit": ""},
         ],
     })
 
@@ -290,13 +442,34 @@ def monitoring(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def irrigation(request):
-    """Toggle irrigation for a field. Body: {field: <farm_id>, on: true|false}"""
+    """
+    Toggle irrigation for a farm.
+    Body: { field: <farm_id>, on: true|false }
+
+    Farmers can control their own farms.
+    Admins can control any farm.
+    Technicians are allowed on farms assigned to them (they may be on-site).
+    """
     farm_id = request.data.get("field")
     on = bool(request.data.get("on"))
 
-    device = Device.objects.filter(farm_id=farm_id, farm__farmer=request.user).first()
+    farms = _farms_visible_to(request.user)
+    if farm_id:
+        farms = farms.filter(id=farm_id)
+
+    farm = farms.first()
+    if not farm:
+        return Response(
+            {"detail": "No farm found for that field."},
+            status=404,
+        )
+
+    device = Device.objects.filter(farm=farm).first()
     if not device:
-        return Response({"detail": "No device found for that field."}, status=404)
+        return Response(
+            {"detail": "No device found for that farm."},
+            status=404,
+        )
 
     cmd = DeviceCommand.objects.create(
         device=device,
