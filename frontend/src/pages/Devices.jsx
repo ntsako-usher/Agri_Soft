@@ -161,16 +161,7 @@ export default function Devices() {
           Refresh
         </button>
 
-        <button onClick={() => setShowAdd(true)} style={{
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "10px 18px",
-          borderRadius: "var(--radius-pill)",
-          border: "none", background: "var(--accent)",
-          color: "white", fontSize: 13, fontWeight: 600,
-          cursor: "pointer", marginLeft: "auto",
-        }}>
-          <Plus size={14} /> Add device
-        </button>
+       
       </div>
 
       {error && (
@@ -198,14 +189,7 @@ export default function Devices() {
               ? "No devices match your filters."
               : "Register your first device to start collecting data."}
           </div>
-          <button onClick={() => setShowAdd(true)} style={{
-            display: "inline-flex", alignItems: "center", gap: 8,
-            padding: "10px 20px", borderRadius: "var(--radius-pill)",
-            border: "none", background: "var(--accent)",
-            color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer",
-          }}>
-            <Plus size={14} /> Add device
-          </button>
+         
         </div>
       ) : (
         <div style={{
@@ -378,20 +362,7 @@ function AddDeviceModal({ farms, onClose, onCreated }) {
         display: "grid", gap: 14,
         boxShadow: "var(--shadow)",
       }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{
-            margin: 0, fontSize: 20, fontWeight: 500,
-            letterSpacing: "-0.4px", color: "var(--text)",
-          }}>
-            Add device
-          </h2>
-          <button type="button" onClick={onClose} style={{
-            background: "transparent", border: "none",
-            color: "var(--text-muted)", cursor: "pointer", padding: 4,
-          }}>
-            <X size={18} />
-          </button>
-        </div>
+        
 
         <Field label="Device name" value={form.name} onChange={change("name")}
                placeholder="e.g. North Field Sensor 02" />
@@ -433,15 +404,7 @@ function AddDeviceModal({ farms, onClose, onCreated }) {
           }}>
             Cancel
           </button>
-          <button type="submit" disabled={busy} style={{
-            flex: 2, padding: "12px 20px",
-            borderRadius: "var(--radius-pill)",
-            background: "var(--accent)", color: "white",
-            border: "none", fontWeight: 600, fontSize: 14,
-            opacity: busy ? 0.6 : 1, cursor: busy ? "wait" : "pointer",
-          }}>
-            {busy ? "Adding…" : "Add device"}
-          </button>
+        
         </div>
       </form>
     </div>

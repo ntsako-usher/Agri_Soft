@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, currentUser } from "../api/client";
 import Topbar from "../components/Topbar";
+import { getPlan } from "../constants/plans";
 import {
   Droplet, Radio, CheckCircle2, ChevronRight,
   Thermometer, CloudRain, Wind, Plus,
@@ -277,11 +278,28 @@ export default function Overview() {
               <div style={{ fontWeight: 600, fontSize: 22, letterSpacing: "-0.4px" }}>
                 {farm?.farm_name ?? "—"}
               </div>
-              <div style={{ opacity: 0.9, fontSize: 13, marginTop: 4 }}>
-                {farm?.size_hectares ? `${Number(farm.size_hectares).toFixed(2)} ha` : "—"} ·{" "}
-                {devicesOnline != null && devicesTotal != null
-                  ? `${devicesOnline} of ${devicesTotal} devices online`
-                  : "—"}
+                            <div style={{
+                opacity: 0.9, fontSize: 13, marginTop: 4,
+                display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+              }}>
+                <span>
+                  {farm?.size_hectares ? `${Number(farm.size_hectares).toFixed(2)} ha` : "—"} ·{" "}
+                  {devicesOnline != null && devicesTotal != null
+                    ? `${devicesOnline} of ${devicesTotal} devices online`
+                    : "—"}
+                </span>
+                {farm?.plan && (
+                  <span style={{
+                    padding: "3px 10px",
+                    borderRadius: "var(--radius-pill)",
+                    background: "rgba(255,255,255,0.22)",
+                    fontSize: 11, fontWeight: 600,
+                    textTransform: "uppercase", letterSpacing: 0.5,
+                    backdropFilter: "blur(6px)",
+                  }}>
+                    {getPlan(farm.plan).name} plan
+                  </span>
+                )}
               </div>
             </div>
           </div>

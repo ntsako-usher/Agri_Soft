@@ -12,6 +12,8 @@ import Signup from "./pages/Signup";
 import SignupSuccess from "./pages/SignupSuccess";
 import AwaitingApproval from "./pages/AwaitingApproval";
 import NewFarm from "./pages/NewFarm";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 
 function Layout({ children }) {
   return (
@@ -35,6 +37,8 @@ export default function App() {
       <Routes>
         {/* Public */}
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password/:uid/:token" element={<ResetPassword />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/signup-success" element={<SignupSuccess />} />
         <Route path="/awaiting-approval" element={<AwaitingApproval />} />

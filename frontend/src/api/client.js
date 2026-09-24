@@ -58,10 +58,19 @@ export const api = {
               axios.post(`${BASE_URL}/auth/token/`, { username: email, password }),
   register: (payload) =>
               axios.post(`${BASE_URL}/farmers/register/`, payload),
+  requestPasswordReset: (payload) =>
+              axios.post(`${BASE_URL}/auth/password-reset/`, payload),
+    validatePasswordReset: (payload) =>
+              axios.post(`${BASE_URL}/auth/password-reset/validate/`, payload),
+  confirmPasswordReset:  (payload) =>
+              axios.post(`${BASE_URL}/auth/password-reset/confirm/`, payload),
+    changePassword: (payload) =>
+              client.post("/auth/change-password/", payload),
 
   // Farms
   farms:      () => client.get("/farms/"),
   createFarm: (payload) => client.post("/farms/", payload),
+    updateFarm: (id, payload) => client.patch(`/farms/${id}/`, payload),
 
   // Devices & data
   devices:      (farmId) => client.get(farmId ? `/devices/?farm=${farmId}` : "/devices/"),

@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Leaf, MapPin, Ruler, Sprout, LogOut, Compass, Clock, CheckCircle2 } from "lucide-react";
+import {
+  Leaf, MapPin, Ruler, Sprout, LogOut, Compass, Clock,
+  Check, Star,
+} from "lucide-react";
 import { api, currentUser } from "../api/client";
+import { PLANS, PLAN_ORDER } from "../constants/plans";
 
 export default function NewFarm() {
   const nav = useNavigate();
@@ -12,6 +16,7 @@ export default function NewFarm() {
     location_description: "",
     size_hectares: "",
     timezone: "Africa/Johannesburg",
+    plan: "basic", // default selection
   });
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,6 +42,7 @@ export default function NewFarm() {
         location_description: form.location_description.trim(),
         size_hectares: form.size_hectares ? Number(form.size_hectares) : null,
         timezone: form.timezone || "Africa/Johannesburg",
+        plan: form.plan, // "basic" or "premium"
       };
       await api.createFarm(payload);
 
@@ -45,13 +51,12 @@ export default function NewFarm() {
         await api.createAlert({
           type: "system",
           severity: "info",
-          message: `New farm registered: ${payload.farm_name} by ${user?.name ?? "farmer"}`,
+          message: `New farm registered: ${payload.farm_name} (${form.plan} plan) by ${user?.name ?? "farmer"}`,
         });
       } catch (err) {
         console.warn("Could not notify admin:", err?.response?.status);
       }
 
-      // Full reload → Overview picks up the new farm for THIS user
       window.location.href = "/";
     } catch (e) {
       const d = e.response?.data;
@@ -80,7 +85,7 @@ export default function NewFarm() {
       display: "grid",
       placeItems: "flex-start center",
     }}>
-      <div style={{ width: "100%", maxWidth: 560 }}>
+      <div style={{ width: "100%", maxWidth: 640 }}>
         {/* Top bar */}
         <div style={{
           display: "flex", justifyContent: "space-between",
@@ -126,7 +131,7 @@ export default function NewFarm() {
             color: "var(--text-muted)", fontSize: 14, marginTop: 12,
             maxWidth: 480, lineHeight: 1.6,
           }}>
-            Tell us about your farm so we can set up monitoring and irrigation.
+            Tell us about your farm and choose a plan so we can set up monitoring.
           </div>
         </div>
 
@@ -146,8 +151,7 @@ export default function NewFarm() {
             icon={<Leaf size={14} />}
             required
           />
-         
-         
+
           <Field
             label="Specific Address"
             placeholder="e.g. 123 Farm Road, Pretoria"
@@ -155,6 +159,7 @@ export default function NewFarm() {
             onChange={change("location_address")}
             icon={<MapPin size={14} />}
           />
+
           <Field
             label="Location Description"
             placeholder="e.g. Near the R101, next to the river"
@@ -162,6 +167,7 @@ export default function NewFarm() {
             onChange={change("location_description")}
             icon={<Compass size={14} />}
           />
+
           <Field
             label="Size (hectares)"
             placeholder="e.g. 12.4"
@@ -171,6 +177,7 @@ export default function NewFarm() {
             onChange={change("size_hectares")}
             icon={<Ruler size={14} />}
           />
+
           <label style={{ display: "grid", gap: 6 }}>
             <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>
               Timezone
@@ -211,6 +218,109 @@ export default function NewFarm() {
               </select>
             </div>
           </label>
+
+          {/* ---------- PLAN PICKER ---------- */}
+          <div style={{ marginTop: 8 }}>
+            <div style={{
+              fontSize: 12, color: "var(--text-muted)",
+              fontWeight: 500, marginBottom: 10,
+            }}>
+              Choose your plan
+            </div>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+            }}>
+              {PLAN_ORDER.map((key) => {
+                const plan = PLANS[key];
+                const selected = form.plan === key;
+                const isPremium = key === "premium";
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setForm({ ...form, plan: key })}
+                    style={{
+                      position: "relative",
+                      textAlign: "left",
+                      padding: 16,
+                      borderRadius: "var(--radius-sm)",
+                      border: selected
+                        ? "2px solid var(--accent)"
+                        : "1px solid var(--border)",
+                      background: selected
+                        ? "var(--accent-soft)"
+                        : "var(--surface-alt)",
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    {selected && (
+                      <span style={{
+                        position: "absolute", top: 10, right: 10,
+                        width: 20, height: 20, borderRadius: "50%",
+                        background: "var(--accent)", color: "white",
+                        display: "grid", placeItems: "center",
+                      }}>
+                        <Check size={12} />
+                      </span>
+                    )}
+
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      marginBottom: 6,
+                    }}>
+                      {isPremium ? (
+                        <Star size={15} color="var(--warn)" />
+                      ) : (
+                        <Sprout size={15} color="var(--accent)" />
+                      )}
+                      <span style={{
+                        fontSize: 15, fontWeight: 600,
+                        color: "var(--text)",
+                      }}>
+                        {plan.name}
+                      </span>
+                    </div>
+
+                    <div style={{
+                      fontSize: 11, color: "var(--text-muted)",
+                      marginBottom: 10,
+                    }}>
+                      {plan.tagline}
+                    </div>
+
+                    <ul style={{
+                      listStyle: "none", padding: 0, margin: 0,
+                      display: "grid", gap: 4,
+                    }}>
+                      {plan.features.map((f) => (
+                        <li key={f} style={{
+                          fontSize: 11, color: "var(--text-muted)",
+                          display: "flex", alignItems: "center", gap: 6,
+                        }}>
+                          <span style={{
+                            width: 3, height: 3, borderRadius: "50%",
+                            background: "var(--text-muted)", flexShrink: 0,
+                          }} />
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{
+              fontSize: 11, color: "var(--text-muted)",
+              marginTop: 8, lineHeight: 1.5,
+            }}>
+              You can change your plan later in Settings.
+            </div>
+          </div>
+          {/* ---------- END PLAN PICKER ---------- */}
 
           {err && (
             <div style={{
