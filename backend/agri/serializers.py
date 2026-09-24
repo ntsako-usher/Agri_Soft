@@ -11,6 +11,9 @@ class FarmSerializer(serializers.ModelSerializer):
     technician_name = serializers.CharField(
         source="technician.name", read_only=True, default=None
     )
+    service_status_display = serializers.CharField(
+        source="get_service_status_display", read_only=True
+    )
 
     class Meta:
         model = Farm
@@ -27,8 +30,12 @@ class FarmSerializer(serializers.ModelSerializer):
             "status",
             "technician",
             "technician_name",
+            "service_status",
+            "service_status_display",
             "service_requested",
             "service_notes",
+            "farmer_feedback",
+            "farmer_satisfied",
             "created_at",
             "updated_at",
         )
@@ -38,8 +45,12 @@ class FarmSerializer(serializers.ModelSerializer):
             "status",
             "technician",
             "technician_name",
+            "service_status",
+            "service_status_display",
             "service_requested",
             "service_notes",
+            "farmer_feedback",
+            "farmer_satisfied",
             "created_at",
             "updated_at",
         )

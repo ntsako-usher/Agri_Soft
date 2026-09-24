@@ -19,9 +19,18 @@ export default function Login() {
       localStorage.setItem("access", data.access);
       localStorage.setItem("refresh", data.refresh);
 
-      // Decide where to go based on JWT status
+      // Decide where to go based on JWT role + status
       const user = decodeJWT(data.access);
-      if (user?.status === "pending") {
+
+      if (user?.is_staff || user?.role === "admin") {
+        nav("/admin", { replace: true });
+      } else if (user?.role === "technician") {
+        if (user?.status === "pending") {
+          nav("/awaiting-approval", { replace: true });
+        } else {
+          nav("/tech/tasks", { replace: true });
+        }
+      } else if (user?.status === "pending") {
         nav("/awaiting-approval", { replace: true });
       } else if (user?.status === "rejected") {
         setErr("Your account was rejected. Contact support.");
@@ -173,13 +182,6 @@ export default function Login() {
 
           <div style={{
             fontSize: 13,
-            color: "var(--text-muted)",
-            textAlign: "center",
-            marginTop: 4,
-          }}>
-
-                      <div style={{
-            fontSize: 13,
             textAlign: "center",
             marginTop: -4,
           }}>
@@ -187,17 +189,20 @@ export default function Login() {
               Forgot password?
             </Link>
           </div>
+
+          <div style={{
+            fontSize: 13,
+            color: "var(--text-muted)",
+            textAlign: "center",
+            marginTop: 4,
+          }}>
             New to Soft-Agri?{" "}
             <Link to="/signup" style={{ color: "var(--accent)", fontWeight: 600 }}>
               Create an account
             </Link>
           </div>
         </form>
-          
-        
       </div>
-
-      
 
       {/* Media query to show the hero on desktop */}
       <style>{`
@@ -253,4 +258,3 @@ function HeroChip({ icon, label }) {
     </div>
   );
 }
-

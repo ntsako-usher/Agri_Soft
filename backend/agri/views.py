@@ -30,7 +30,7 @@ def _is_technician(user):
 
 def _farms_visible_to(user):
     """
-    Return the queryset of Farms the given user is allowed to see.
+    Farms visible to the given user:
     - Admin: all farms
     - Technician: farms assigned to them
     - Farmer: farms they own
@@ -41,6 +41,20 @@ def _farms_visible_to(user):
     if _is_technician(user):
         return qs.filter(technician=user)
     return qs.filter(farmer=user)
+
+
+def _sync_service_requested(farm):
+    """
+    Keep the legacy `service_requested` boolean in sync with `service_status`.
+    True whenever the workflow is active (requested / assigned / completed).
+    False when none or confirmed.
+    """
+    active = farm.service_status in (
+        Farm.ServiceStatus.REQUESTED,
+        Farm.ServiceStatus.ASSIGNED,
+        Farm.ServiceStatus.COMPLETED,
+    )
+    farm.service_requested = active
 
 
 # =========================================================================
@@ -60,14 +74,63 @@ class FarmViewSet(viewsets.ModelViewSet):
         return _farms_visible_to(self.request.user).order_by("-created_at")
 
     def perform_create(self, serializer):
-        # Only farmers can create farms. A technician should never create one.
         if _is_technician(self.request.user):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Technicians cannot create farms.")
         serializer.save(farmer=self.request.user)
 
     # ---------------------------------------------------------------------
-    # Admin: assign a technician to a farm
+    # Farmer: request service (installation / maintenance / repair)
+    # ---------------------------------------------------------------------
+    @action(detail=True, methods=["post"], url_path="request-service",
+            permission_classes=[IsAuthenticated])
+    def request_service(self, request, pk=None):
+        """
+        Farmer-only.
+        POST /api/farms/{id}/request-service/
+        Body: { service_notes: "what do you need?" }
+
+        Allowed when service_status is 'none' or 'confirmed'.
+        """
+        farm = self.get_object()
+        user = request.user
+
+        if farm.farmer_id != user.id:
+            return Response(
+                {"detail": "Only the farm owner can request service."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if farm.service_status not in (
+            Farm.ServiceStatus.NONE,
+            Farm.ServiceStatus.CONFIRMED,
+        ):
+            return Response(
+                {"detail": f"Cannot request service while status is '{farm.service_status}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        notes = (request.data.get("service_notes") or "").strip()
+        if not notes:
+            return Response(
+                {"detail": "service_notes is required — describe what you need."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        farm.service_notes = notes
+        farm.service_status = Farm.ServiceStatus.REQUESTED
+        farm.farmer_feedback = None
+        farm.farmer_satisfied = None
+        _sync_service_requested(farm)
+        farm.save(update_fields=[
+            "service_notes", "service_status", "service_requested",
+            "farmer_feedback", "farmer_satisfied", "updated_at",
+        ])
+
+        return Response(FarmSerializer(farm).data)
+
+    # ---------------------------------------------------------------------
+    # Admin: assign (or reassign) a technician
     # ---------------------------------------------------------------------
     @action(detail=True, methods=["post"], url_path="assign-technician",
             permission_classes=[IsAuthenticated])
@@ -75,7 +138,7 @@ class FarmViewSet(viewsets.ModelViewSet):
         """
         Admin-only.
         POST /api/farms/{id}/assign-technician/
-        Body: { technician: <farmer_id>, service_notes: "optional" }
+        Body: { technician: <id|nullable>, service_notes: "optional" }
         """
         if not request.user.is_staff:
             return Response(
@@ -85,7 +148,7 @@ class FarmViewSet(viewsets.ModelViewSet):
 
         farm = self.get_object()
         tech_id = request.data.get("technician")
-        notes = request.data.get("service_notes", "")
+        notes = request.data.get("service_notes")
 
         if tech_id:
             from farmers.models import Farmer
@@ -97,16 +160,16 @@ class FarmViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND,
                 )
             farm.technician = technician
+            farm.service_status = Farm.ServiceStatus.ASSIGNED
         else:
             farm.technician = None
+            farm.service_status = Farm.ServiceStatus.REQUESTED
 
-        farm.service_notes = notes
-        farm.service_requested = bool(farm.technician)
-        farm.save(update_fields=[
-            "technician", "service_notes", "service_requested", "updated_at"
-        ])
+        if notes is not None:
+            farm.service_notes = notes
 
-        # TODO: notify the technician by email/SMS.
+        _sync_service_requested(farm)
+        farm.save()
 
         return Response(FarmSerializer(farm).data)
 
@@ -119,11 +182,7 @@ class FarmViewSet(viewsets.ModelViewSet):
         """
         Technician-only.
         POST /api/farms/{id}/mark-service-done/
-        Body: { service_notes: "what was done", clear_technician: true|false }
-
-        Clears the service_requested flag so the admin/farmer knows the
-        job is done. By default the technician stays assigned (so history
-        is preserved); pass clear_technician=true to release them.
+        Body: { service_notes: "what was done", clear_technician: bool }
         """
         farm = self.get_object()
         user = request.user
@@ -134,44 +193,123 @@ class FarmViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        notes = request.data.get("service_notes", "")
+        notes = (request.data.get("service_notes") or "").strip()
         clear = bool(request.data.get("clear_technician", False))
 
-        farm.service_requested = False
         if notes:
             existing = farm.service_notes or ""
-            farm.service_notes = (existing + "\n\n---\n" + notes).strip()
+            separator = "\n\n---\n" if existing.strip() else ""
+            farm.service_notes = (existing + separator + notes).strip()
+
+        farm.service_status = Farm.ServiceStatus.COMPLETED
+
         if clear:
             farm.technician = None
 
-        farm.save(update_fields=[
-            "service_requested", "service_notes",
-            "technician", "updated_at",
-        ])
-
-        # TODO: notify admin + farmer by email/SMS.
+        _sync_service_requested(farm)
+        farm.save()
 
         return Response(FarmSerializer(farm).data)
 
     # ---------------------------------------------------------------------
-    # Admin: list farms that still need service
+    # Farmer: confirm the work is good
+    # ---------------------------------------------------------------------
+    @action(detail=True, methods=["post"], url_path="confirm-service",
+            permission_classes=[IsAuthenticated])
+    def confirm_service(self, request, pk=None):
+        """
+        Farmer-only.
+        POST /api/farms/{id}/confirm-service/
+        Body: { farmer_feedback: "optional comment" }
+        """
+        farm = self.get_object()
+        if farm.farmer_id != request.user.id:
+            return Response(
+                {"detail": "Only the farm owner can confirm this service."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if farm.service_status != Farm.ServiceStatus.COMPLETED:
+            return Response(
+                {"detail": "Only jobs awaiting your feedback can be confirmed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        farm.service_status = Farm.ServiceStatus.CONFIRMED
+        farm.farmer_satisfied = True
+        farm.farmer_feedback = (request.data.get("farmer_feedback") or "").strip() or None
+        _sync_service_requested(farm)
+        farm.save()
+
+        return Response(FarmSerializer(farm).data)
+
+    # ---------------------------------------------------------------------
+    # Farmer: reject and request a redo
+    # ---------------------------------------------------------------------
+    @action(detail=True, methods=["post"], url_path="reject-service",
+            permission_classes=[IsAuthenticated])
+    def reject_service(self, request, pk=None):
+        """
+        Farmer-only.
+        POST /api/farms/{id}/reject-service/
+        Body: { farmer_feedback: "why is this not good?" }
+
+        Puts the farm back in the admin queue with status='requested'.
+        """
+        farm = self.get_object()
+        if farm.farmer_id != request.user.id:
+            return Response(
+                {"detail": "Only the farm owner can reject this service."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if farm.service_status != Farm.ServiceStatus.COMPLETED:
+            return Response(
+                {"detail": "Only jobs awaiting your feedback can be rejected."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        feedback = (request.data.get("farmer_feedback") or "").strip()
+        if not feedback:
+            return Response(
+                {"detail": "Please explain what needs to be redone."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        farm.service_status = Farm.ServiceStatus.REQUESTED
+        farm.farmer_satisfied = False
+        farm.farmer_feedback = feedback
+        # Append the farmer's complaint to the running notes so the next tech sees it.
+        existing = farm.service_notes or ""
+        separator = "\n\n---\n" if existing.strip() else ""
+        farm.service_notes = (existing + separator + f"[Farmer redo request] {feedback}").strip()
+
+        _sync_service_requested(farm)
+        farm.save()
+
+        return Response(FarmSerializer(farm).data)
+
+    # ---------------------------------------------------------------------
+    # Admin: list farms with any active service
     # ---------------------------------------------------------------------
     @action(detail=False, methods=["get"], url_path="pending-service",
             permission_classes=[IsAuthenticated])
     def pending_service(self, request):
         """
-        Admin-only.
-        GET /api/farms/pending-service/
-        Returns farms with service_requested=True (either unassigned or in progress).
+        Admin-only. Returns all farms whose service workflow is not 'none'
+        (includes 'confirmed' so admins can see history).
         """
         if not request.user.is_staff:
             return Response(
                 {"detail": "Admin only."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        qs = Farm.objects.filter(service_requested=True).select_related(
-            "farmer", "technician"
-        ).order_by("-updated_at")
+        qs = (
+            Farm.objects
+            .exclude(service_status=Farm.ServiceStatus.NONE)
+            .select_related("farmer", "technician")
+            .order_by("-updated_at")
+        )
         return Response(FarmSerializer(qs, many=True).data)
 
 
@@ -210,7 +348,6 @@ class SensorReadingViewSet(viewsets.ModelViewSet):
             .select_related("device")
         )
 
-        # Optional filters: ?device=<id>&range=24h|7d|30d
         device_id = self.request.query_params.get("device")
         if device_id:
             qs = qs.filter(device_id=device_id)
@@ -257,7 +394,6 @@ class AlertViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["patch"])
     def resolve(self, request, pk=None):
-        """Mark an alert as resolved. PATCH /api/alerts/{id}/resolve/"""
         alert = self.get_object()
         alert.is_resolved = True
         alert.resolved_at = timezone.now()
@@ -266,7 +402,6 @@ class AlertViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["patch"])
     def reopen(self, request, pk=None):
-        """Reopen a resolved alert. PATCH /api/alerts/{id}/reopen/"""
         alert = self.get_object()
         alert.is_resolved = False
         alert.resolved_at = None
@@ -292,17 +427,11 @@ class DeviceCommandViewSet(viewsets.ModelViewSet):
 
 
 # =========================================================================
-# IoT ingest — ESP32 posts sensor readings here (API-key auth in prod)
+# IoT ingest — ESP32 posts sensor readings here
 # =========================================================================
 @api_view(["POST"])
 @permission_classes([AllowAny])  # TODO: replace with API-key auth
 def sensor_data_ingest(request):
-    """
-    Ingest a sensor reading from an ESP32.
-    Body: { device_uid, moisture, temp_c, humidity, pressure_hpa,
-            light_level, rain_detected, soil_ph, smoke_level,
-            flame_detected, motion_detected }
-    """
     device_uid = request.data.get("device_uid")
     if not device_uid:
         return Response({"detail": "device_uid is required."}, status=400)
@@ -316,7 +445,6 @@ def sensor_data_ingest(request):
     serializer.is_valid(raise_exception=True)
     reading = serializer.save()
 
-    # Update device status to online
     device.status = Device.Status.ONLINE
     device.save(update_fields=["status", "updated_at"])
 
@@ -324,19 +452,11 @@ def sensor_data_ingest(request):
 
 
 # =========================================================================
-# Frontend helper endpoints
+# Frontend helpers
 # =========================================================================
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def overview(request):
-    """
-    Dashboard summary for a farm.
-    /api/overview/?field=<farm_id>
-
-    Farmers see their own farms.
-    Technicians see farms assigned to them.
-    Admins see all.
-    """
     farm_id = request.query_params.get("field")
     farms = _farms_visible_to(request.user)
     if farm_id:
@@ -346,15 +466,12 @@ def overview(request):
     if not farm:
         return Response({"detail": "No farm found."}, status=404)
 
-    # Latest reading from any device on this farm
     latest = (
         SensorReading.objects.filter(device__farm=farm)
         .select_related("device")
         .order_by("-recorded_at")
         .first()
     )
-
-    # Threshold from the primary device
     device = Device.objects.filter(farm=farm).first()
     threshold = Threshold.objects.filter(device=device).first() if device else None
 
@@ -363,11 +480,7 @@ def overview(request):
     online_devices = Device.objects.filter(farm=farm, status=Device.Status.ONLINE).count()
 
     return Response({
-        "farm": {
-            "id": farm.id,
-            "name": farm.farm_name,
-            "size_hectares": farm.size_hectares,
-        },
+        "farm": {"id": farm.id, "name": farm.farm_name, "size_hectares": farm.size_hectares},
         "soilMoisture": {
             "value": float(latest.moisture) if latest and latest.moisture is not None else None,
             "unit": "%",
@@ -392,10 +505,6 @@ def overview(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def monitoring(request):
-    """
-    Live monitoring snapshot. /api/monitoring/?field=<farm_id>
-    Same role-scoping as overview.
-    """
     farm_id = request.query_params.get("field")
     farms = _farms_visible_to(request.user)
     if farm_id:
@@ -409,7 +518,6 @@ def monitoring(request):
         .order_by("-recorded_at")
         .first()
     )
-
     if not latest:
         return Response({"detail": "No readings yet."}, status=404)
 
@@ -442,14 +550,6 @@ def monitoring(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def irrigation(request):
-    """
-    Toggle irrigation for a farm.
-    Body: { field: <farm_id>, on: true|false }
-
-    Farmers can control their own farms.
-    Admins can control any farm.
-    Technicians are allowed on farms assigned to them (they may be on-site).
-    """
     farm_id = request.data.get("field")
     on = bool(request.data.get("on"))
 
@@ -459,17 +559,11 @@ def irrigation(request):
 
     farm = farms.first()
     if not farm:
-        return Response(
-            {"detail": "No farm found for that field."},
-            status=404,
-        )
+        return Response({"detail": "No farm found for that field."}, status=404)
 
     device = Device.objects.filter(farm=farm).first()
     if not device:
-        return Response(
-            {"detail": "No device found for that farm."},
-            status=404,
-        )
+        return Response({"detail": "No device found for that farm."}, status=404)
 
     cmd = DeviceCommand.objects.create(
         device=device,
@@ -477,6 +571,4 @@ def irrigation(request):
         command=DeviceCommand.Command.PUMP_ON if on else DeviceCommand.Command.PUMP_OFF,
         source=DeviceCommand.Source.MANUAL,
     )
-
-    # TODO: Publish to MQTT topic softagri/command/<device_uid>
     return Response({"on": on, "command_id": cmd.id})

@@ -13,6 +13,13 @@ class Farm(models.Model):
         APPROVED = "approved", "Approved"
         REJECTED = "rejected", "Rejected"
 
+    class ServiceStatus(models.TextChoices):
+        NONE = "none", "No service needed"
+        REQUESTED = "requested", "Requested by farmer"
+        ASSIGNED = "assigned", "Technician assigned"
+        COMPLETED = "completed", "Awaiting farmer feedback"
+        CONFIRMED = "confirmed", "Confirmed by farmer"
+
     farmer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -42,14 +49,31 @@ class Farm(models.Model):
         db_column="technician_id",
         help_text="Technician responsible for installing/maintaining devices on this farm.",
     )
+    service_status = models.CharField(
+        max_length=20,
+        choices=ServiceStatus.choices,
+        default=ServiceStatus.NONE,
+        help_text="Current state of the service workflow.",
+    )
+    # Legacy boolean — kept in sync with service_status for backwards compatibility.
     service_requested = models.BooleanField(
         default=False,
-        help_text="Set to true when this farm needs a technician visit.",
+        help_text="Derived from service_status; True whenever service is active or awaiting feedback.",
     )
     service_notes = models.TextField(
         blank=True,
         null=True,
         help_text="Instructions or notes for the assigned technician.",
+    )
+    farmer_feedback = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Farmer's feedback once the technician has completed the job.",
+    )
+    farmer_satisfied = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text="True if farmer confirmed the work, False if it needs redoing. Null while pending.",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -61,6 +85,7 @@ class Farm(models.Model):
             models.Index(fields=["farmer"]),
             models.Index(fields=["status"]),
             models.Index(fields=["technician"]),
+            models.Index(fields=["service_status"]),
         ]
         verbose_name = "Farm"
         verbose_name_plural = "Farms"

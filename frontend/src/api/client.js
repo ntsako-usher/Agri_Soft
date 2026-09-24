@@ -50,6 +50,16 @@ export function currentUser() {
   return decodeJWT(localStorage.getItem("access"));
 }
 
+/* ---------- Role helper ---------- */
+
+export function currentRole() {
+  const user = currentUser();
+  if (!user) return null;
+  if (user.is_staff || user.role === "admin") return "admin";
+  if (user.role === "technician") return "technician";
+  return "farmer";
+}
+
 /* ---------- API ---------- */
 
 export const api = {
@@ -58,19 +68,31 @@ export const api = {
               axios.post(`${BASE_URL}/auth/token/`, { username: email, password }),
   register: (payload) =>
               axios.post(`${BASE_URL}/farmers/register/`, payload),
-  requestPasswordReset: (payload) =>
-              axios.post(`${BASE_URL}/auth/password-reset/`, payload),
-    validatePasswordReset: (payload) =>
-              axios.post(`${BASE_URL}/auth/password-reset/validate/`, payload),
-  confirmPasswordReset:  (payload) =>
-              axios.post(`${BASE_URL}/auth/password-reset/confirm/`, payload),
-    changePassword: (payload) =>
-              client.post("/auth/change-password/", payload),
+  changePassword: (payload) =>
+              client.post("/farmers/change-password/", payload),
 
   // Farms
   farms:      () => client.get("/farms/"),
   createFarm: (payload) => client.post("/farms/", payload),
-    updateFarm: (id, payload) => client.patch(`/farms/${id}/`, payload),
+
+  // Technician workflow
+  pendingService: (params) => client.get("/farms/pending-service/", { params }),
+  assignTechnician: (farmId, payload) =>
+              client.post(`/farms/${farmId}/assign-technician/`, payload),
+  markServiceDone: (farmId, payload) =>
+              client.post(`/farms/${farmId}/mark-service-done/`, payload),
+
+  // Farmer service requests / feedback
+  requestService: (farmId, payload) =>
+              client.post(`/farms/${farmId}/request-service/`, payload),
+  confirmService: (farmId, payload) =>
+              client.post(`/farms/${farmId}/confirm-service/`, payload),
+  rejectService: (farmId, payload) =>
+              client.post(`/farms/${farmId}/reject-service/`, payload),
+
+  // Users (admin)
+  technicians: () => client.get("/farmers/technicians/"),
+  farmersList: () => client.get("/farmers/all/"),
 
   // Devices & data
   devices:      (farmId) => client.get(farmId ? `/devices/?farm=${farmId}` : "/devices/"),

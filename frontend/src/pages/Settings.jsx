@@ -2,11 +2,27 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus, Sprout, ChevronRight, LogOut, Clock, XCircle,
-  Lock, Eye, EyeOff, CheckCircle2, Star,
+  Lock, Eye, EyeOff, CheckCircle2, Star, Wrench, Send, RotateCcw,
 } from "lucide-react";
 import { api, currentUser } from "../api/client";
 import Topbar from "../components/Topbar";
 import { PLANS, PLAN_ORDER, getPlan } from "../constants/plans";
+
+// ----- Service workflow helpers -----
+const SERVICE_LABEL = {
+  none: null,
+  requested: "Service: Awaiting admin",
+  assigned: "Service: Technician assigned",
+  completed: "Service: Your review needed",
+  confirmed: "Service: Confirmed",
+};
+
+const SERVICE_TONE = {
+  requested: { fg: "var(--warn)",   bg: "var(--warn-soft)" },
+  assigned:  { fg: "var(--accent)", bg: "var(--accent-soft)" },
+  completed: { fg: "var(--danger)", bg: "var(--danger-soft)" },
+  confirmed: { fg: "var(--good)",   bg: "var(--accent-soft)" },
+};
 
 export default function Settings() {
   const nav = useNavigate();
@@ -26,9 +42,15 @@ export default function Settings() {
   const [showPw, setShowPw] = useState(false);
 
   // Change plan state
-  const [changingPlanFor, setChangingPlanFor] = useState(null); // farmId
+  const [changingPlanFor, setChangingPlanFor] = useState(null);
   const [planBusy, setPlanBusy] = useState(false);
   const [planErr, setPlanErr] = useState("");
+
+  // Service workflow state
+  const [serviceAction, setServiceAction] = useState(null); // { farmId, type: 'request'|'confirm'|'reject' }
+  const [serviceText, setServiceText] = useState("");
+  const [serviceBusy, setServiceBusy] = useState(false);
+  const [serviceErr, setServiceErr] = useState("");
 
   const loadFarms = () => {
     setLoading(true);
@@ -103,6 +125,66 @@ export default function Settings() {
       );
     } finally {
       setPlanBusy(false);
+    }
+  };
+
+  // ----- Service workflow handlers -----
+  const openServiceAction = (farmId, type) => {
+    setServiceAction({ farmId, type });
+    setServiceText("");
+    setServiceErr("");
+  };
+
+  const closeServiceAction = () => {
+    setServiceAction(null);
+    setServiceText("");
+    setServiceErr("");
+  };
+
+  const submitServiceAction = async () => {
+    if (!serviceAction) return;
+    const { farmId, type } = serviceAction;
+    setServiceErr("");
+
+    if (!serviceText.trim()) {
+      setServiceErr(
+        type === "request"
+          ? "Describe what you need the technician to do."
+          : "Please explain what needs to be redone."
+      );
+      return;
+    }
+
+    setServiceBusy(true);
+    try {
+      let payload;
+      if (type === "request") {
+        payload = { service_notes: serviceText.trim() };
+      } else if (type === "reject") {
+        payload = { farmer_feedback: serviceText.trim() };
+      } else if (type === "confirm") {
+        payload = { farmer_feedback: serviceText.trim() };
+      }
+
+      let data;
+      if (type === "request") {
+        ({ data } = await api.requestService(farmId, payload));
+      } else if (type === "reject") {
+        ({ data } = await api.rejectService(farmId, payload));
+      } else {
+        ({ data } = await api.confirmService(farmId, payload));
+      }
+
+      setFarms((prev) => prev.map((f) => (f.id === farmId ? data : f)));
+      closeServiceAction();
+    } catch (e) {
+      const d = e.response?.data;
+      setServiceErr(
+        d?.detail ||
+          (typeof d === "object" ? Object.values(d).flat().join(" ") : "Could not submit.")
+      );
+    } finally {
+      setServiceBusy(false);
     }
   };
 
@@ -295,6 +377,10 @@ export default function Settings() {
           const isRejected = f.status === "rejected";
           const currentPlan = getPlan(f.plan);
           const isChanging = changingPlanFor === f.id;
+          const serviceStatus = f.service_status || "none";
+          const serviceLabel = SERVICE_LABEL[serviceStatus];
+          const serviceTone = SERVICE_TONE[serviceStatus];
+          const serviceFormOpen = serviceAction?.farmId === f.id;
 
           return (
             <div
@@ -362,6 +448,20 @@ export default function Settings() {
                       </span>
                     )}
 
+                    {serviceLabel && (
+                      <span style={{
+                        fontSize: 10, fontWeight: 600,
+                        padding: "3px 8px",
+                        borderRadius: "var(--radius-pill)",
+                        background: serviceTone.bg,
+                        color: serviceTone.fg,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.4,
+                      }}>
+                        {serviceLabel}
+                      </span>
+                    )}
+
                     {isPending && (
                       <span style={{
                         fontSize: 10, fontWeight: 600,
@@ -405,7 +505,59 @@ export default function Settings() {
                 </div>
 
                 {isApproved && !isChanging && (
-                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
+                    {/* Service request / confirm buttons */}
+                    {(serviceStatus === "none" || serviceStatus === "confirmed") && (
+                      <button
+                        onClick={() => openServiceAction(f.id, "request")}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 6,
+                          padding: "6px 12px",
+                          borderRadius: "var(--radius-pill)",
+                          border: "1px solid var(--border)",
+                          background: "var(--accent-soft)",
+                          color: "var(--accent)",
+                          fontSize: 12, fontWeight: 500,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <Wrench size={12} /> Request service
+                      </button>
+                    )}
+                    {serviceStatus === "completed" && (
+                      <>
+                        <button
+                          onClick={() => openServiceAction(f.id, "confirm")}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 6,
+                            padding: "6px 12px",
+                            borderRadius: "var(--radius-pill)",
+                            border: "none",
+                            background: "var(--accent)",
+                            color: "white",
+                            fontSize: 12, fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <CheckCircle2 size={12} /> Confirm job
+                        </button>
+                        <button
+                          onClick={() => openServiceAction(f.id, "reject")}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 6,
+                            padding: "6px 12px",
+                            borderRadius: "var(--radius-pill)",
+                            border: "1px solid var(--border)",
+                            background: "var(--surface-alt)",
+                            color: "var(--danger)",
+                            fontSize: 12, fontWeight: 500,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <RotateCcw size={12} /> Request redo
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={() => setChangingPlanFor(f.id)}
                       style={{
@@ -434,6 +586,124 @@ export default function Settings() {
                   </div>
                 )}
               </div>
+
+              {/* Service workflow form */}
+              {serviceFormOpen && (
+                <div style={{
+                  marginTop: 12,
+                  padding: 14,
+                  background:
+                    serviceAction.type === "reject"
+                      ? "var(--danger-soft)"
+                      : serviceAction.type === "confirm"
+                      ? "var(--accent-soft)"
+                      : "var(--surface-alt)",
+                  borderRadius: "var(--radius-sm)",
+                  display: "grid", gap: 10,
+                }}>
+                  <div style={{
+                    fontSize: 13, fontWeight: 600, color: "var(--text)",
+                    display: "flex", alignItems: "center", gap: 8,
+                  }}>
+                    {serviceAction.type === "request" && (
+                      <><Wrench size={14} /> Request a technician</>
+                    )}
+                    {serviceAction.type === "confirm" && (
+                      <><CheckCircle2 size={14} /> Confirm this job is done</>
+                    )}
+                    {serviceAction.type === "reject" && (
+                      <><RotateCcw size={14} /> Request a redo</>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    {serviceAction.type === "request" &&
+                      "Describe the issue or installation work you need. The admin will assign a technician."}
+                    {serviceAction.type === "confirm" &&
+                      "Optional: leave a comment about the technician's work."}
+                    {serviceAction.type === "reject" &&
+                      "Explain what was wrong so the admin can send a technician back."}
+                  </div>
+                  <textarea
+                    value={serviceText}
+                    onChange={(e) => setServiceText(e.target.value)}
+                    rows={3}
+                    placeholder={
+                      serviceAction.type === "request"
+                        ? "e.g. Install 3 soil moisture sensors in the north block"
+                        : serviceAction.type === "confirm"
+                        ? "Optional comment…"
+                        : "e.g. Sensor 2 still shows no readings"
+                    }
+                    required={serviceAction.type !== "confirm"}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: "var(--radius-sm)",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface)",
+                      color: "var(--text)",
+                      fontSize: 13,
+                      fontFamily: "inherit",
+                      resize: "vertical",
+                      outline: "none",
+                    }}
+                  />
+
+                  {serviceErr && (
+                    <div style={{
+                      fontSize: 12, color: "var(--danger)",
+                      background: "var(--surface)",
+                      padding: "8px 10px",
+                      borderRadius: "var(--radius-sm)",
+                    }}>
+                      {serviceErr}
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button
+                      onClick={closeServiceAction}
+                      disabled={serviceBusy}
+                      style={{
+                        padding: "7px 14px",
+                        borderRadius: "var(--radius-pill)",
+                        border: "1px solid var(--border)",
+                        background: "var(--surface)",
+                        color: "var(--text-muted)",
+                        fontSize: 12, fontWeight: 500,
+                        cursor: serviceBusy ? "wait" : "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={submitServiceAction}
+                      disabled={serviceBusy}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        padding: "7px 16px",
+                        borderRadius: "var(--radius-pill)",
+                        border: "none",
+                        background: serviceAction.type === "reject"
+                          ? "var(--danger)"
+                          : "var(--accent)",
+                        color: "white",
+                        fontSize: 12, fontWeight: 600,
+                        cursor: serviceBusy ? "wait" : "pointer",
+                        opacity: serviceBusy ? 0.6 : 1,
+                      }}
+                    >
+                      <Send size={12} />
+                      {serviceBusy
+                        ? "Sending…"
+                        : serviceAction.type === "request"
+                        ? "Send request"
+                        : serviceAction.type === "confirm"
+                        ? "Confirm"
+                        : "Send back"}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Inline plan picker */}
               {isChanging && (

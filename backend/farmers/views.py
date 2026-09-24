@@ -157,3 +157,70 @@ class ChangePasswordView(APIView):
             serializer.save()
             return Response({"detail": "Password updated successfully."})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class TechniciansListView(APIView):
+    """
+    GET /api/farmers/technicians/
+    Admin-only: list all users with role='technician'.
+    Used by the admin UI when assigning a technician to a farm.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not request.user.is_staff:
+            return Response(
+                {"detail": "Only admins can list technicians."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        technicians = (
+            Farmer.objects
+            .filter(role=Farmer.Role.TECHNICIAN)
+            .order_by("name")
+        )
+        data = [
+            {
+                "id": t.id,
+                "name": t.name,
+                "email": t.email,
+                "phone": t.phone,
+                "status": t.status,
+                "role": t.role,
+            }
+            for t in technicians
+        ]
+        return Response(data)
+
+
+class FarmersListView(APIView):
+    """
+    GET /api/farmers/all/
+    Admin-only: list all users with role='farmer'.
+    Used by the admin Farmers overview page.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not request.user.is_staff:
+            return Response(
+                {"detail": "Only admins can list all farmers."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        farmers = (
+            Farmer.objects
+            .filter(role=Farmer.Role.FARMER)
+            .order_by("-created_at")
+        )
+        data = [
+            {
+                "id": f.id,
+                "name": f.name,
+                "email": f.email,
+                "phone": f.phone,
+                "status": f.status,
+                "role": f.role,
+                "created_at": f.created_at,
+            }
+            for f in farmers
+        ]
+        return Response(data)
