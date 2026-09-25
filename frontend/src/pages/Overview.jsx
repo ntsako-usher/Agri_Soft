@@ -249,18 +249,21 @@ export default function Overview() {
             </div>
           </div>
 
-          {/* Green hero banner */}
+          {/* Green hero banner — with purple.jpg background */}
           <div style={{
             borderRadius: "var(--radius)",
             color: "white",
-            background: "linear-gradient(120deg, #a8c4a8 0%, #6f9174 55%, #4e6f52 100%)",
+            background: `
+              linear-gradient(120deg, rgba(63,90,68,0.78) 0%, rgba(78,111,82,0.68) 55%, rgba(52,76,56,0.62) 100%),
+              url("/images/purple.jpg") center/cover no-repeat
+            `,
             display: "flex", alignItems: "center",
             justifyContent: "space-between",
             padding: "24px 28px", marginBottom: 16,
             position: "relative", overflow: "hidden", minHeight: 120,
           }}>
             <svg
-              style={{ position: "absolute", inset: 0, opacity: 0.16, pointerEvents: "none" }}
+              style={{ position: "absolute", inset: 0, opacity: 0.08, pointerEvents: "none" }}
               viewBox="0 0 800 200" preserveAspectRatio="none"
             >
               {[...Array(20)].map((_, i) => (
@@ -278,7 +281,7 @@ export default function Overview() {
               <div style={{ fontWeight: 600, fontSize: 22, letterSpacing: "-0.4px" }}>
                 {farm?.farm_name ?? "—"}
               </div>
-                            <div style={{
+              <div style={{
                 opacity: 0.9, fontSize: 13, marginTop: 4,
                 display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
               }}>

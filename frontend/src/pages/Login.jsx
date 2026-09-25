@@ -56,7 +56,10 @@ export default function Login() {
         flex: 1,
         display: "none",
         position: "relative",
-        background: "linear-gradient(150deg, #a8c4a8 0%, #6f9174 50%, #3f5a44 100%)",
+        background: `
+          linear-gradient(150deg, rgba(63,90,68,0.72) 0%, rgba(111,145,116,0.6) 50%, rgba(168,196,168,0.5) 100%),
+          url("/images/overview.jpg") center/cover no-repeat
+        `,
         color: "white",
         padding: 48,
         flexDirection: "column",
