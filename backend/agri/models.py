@@ -90,6 +90,33 @@ class Farm(models.Model):
         verbose_name = "Farm"
         verbose_name_plural = "Farms"
 
+    # ---------------------------------------------------------------------
+    # Availability helper — used by admin, API, and frontend
+    # ---------------------------------------------------------------------
+    @classmethod
+    def available_technicians(cls):
+        """
+        Technicians who are approved AND not currently assigned to any farm
+        with service_status='assigned'.
+
+        A technician is "busy" only while they have an active assignment.
+        Once the admin marks the farm as 'completed' (or 'confirmed'),
+        the technician is freed and will reappear here.
+        """
+        from farmers.models import Farmer
+        busy_ids = (
+            cls.objects
+            .filter(service_status=cls.ServiceStatus.ASSIGNED)
+            .exclude(technician__isnull=True)
+            .values_list("technician_id", flat=True)
+        )
+        return (
+            Farmer.objects
+            .filter(role=Farmer.Role.TECHNICIAN, status=Farmer.Status.APPROVED)
+            .exclude(id__in=busy_ids)
+            .order_by("name")
+        )
+
     def __str__(self):
         return self.farm_name
 

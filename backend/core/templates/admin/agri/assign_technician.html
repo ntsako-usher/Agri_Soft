@@ -1,0 +1,56 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+    &rsaquo; <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+    &rsaquo; Assign technician
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>Assign technician</h1>
+
+<p>
+    You selected <strong>{{ queryset.count }}</strong> farm(s).
+    Choose one technician from the dropdown below.
+    Only technicians who are approved and not currently busy will appear.
+</p>
+
+<ul style="margin: 12px 0 20px 20px;">
+    {% for farm in queryset %}
+        <li>
+            <strong>{{ farm.farm_name }}</strong>
+            — owner: {{ farm.farmer.name }}
+            {% if farm.service_status == "assigned" %}
+                <em style="color:#842029;">(already in progress — will be skipped)</em>
+            {% endif %}
+        </li>
+    {% endfor %}
+</ul>
+
+<form method="post">
+    {% csrf_token %}
+
+    {% for field in form %}
+        <div class="form-row">
+            {{ field.errors }}
+            <label for="{{ field.id_for_label }}">{{ field.label }}:</label>
+            {{ field }}
+            {% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}
+        </div>
+    {% endfor %}
+
+    {% for farm in queryset %}
+        <input type="hidden" name="_selected_action" value="{{ farm.pk }}" />
+    {% endfor %}
+    <input type="hidden" name="action" value="assign_technician_action" />
+
+    <div class="submit-row">
+        <input type="submit" name="apply" value="Assign technician" class="default" />
+        <a href="{% url opts|admin_urlname:'changelist' %}" class="button cancel-link">Cancel</a>
+    </div>
+</form>
+{% endblock %}
